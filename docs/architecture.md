@@ -3,6 +3,8 @@
 > Фаза 2, вариант **C** — SSE streaming + disk-cached artifacts. Выбор пользователя 2026-04-18, причина: «нет рисков по срокам — этот код будешь писать ты».
 > Этот документ фиксирует архитектуру верхнего уровня, границы контейнеров, внутреннее устройство backend, контракт данных и архитектурные решения (ADR).
 > Диаграммы лежат в `docs/diagrams/`, рендеры — в `docs/diagrams/rendered/`.
+>
+> **Версии зафиксированы на 2026-04-19.** Перед стартом фазы реализации (и перед каждым релизом) исполнитель **обязан** сверить версии с актуальной документацией: go.dev/doc/devel/release, react.dev/versions, vitejs.dev/blog, typescriptlang.org, js.cytoscape.org, hub.docker.com (node, golang, distroless). См. §11 «Политика актуальности версий».
 
 ---
 
@@ -34,7 +36,7 @@
 
 Всего четыре «контейнера», из которых только два — процессы:
 
-- **Browser SPA.** React 18 + TypeScript + Vite + Cytoscape.js + `cytoscape-svg`. Хранит `project_id` и UI-настройки в `localStorage` (FR-26). Общается с бэкендом по HTTP и SSE (`EventSource`). Строится в собственном stage Dockerfile, артефакты (`web/dist/`) копируются в Go-stage для `embed.FS`.
+- **Browser SPA.** React 19 + TypeScript 6 + Vite 8 (Rolldown) + Cytoscape.js 3.33 + `cytoscape-svg`. Хранит `project_id` и UI-настройки в `localStorage` (FR-26). Общается с бэкендом по HTTP и SSE. Строится в собственном stage Dockerfile, артефакты (`web/dist/`) копируются в Go-stage для `embed.FS`. Версии указаны на 2026-04-19 — перед `npm install` проверять актуальные minor-версии.
 - **Go Backend.** Один процесс, `net/http.ServeMux` без фреймворков. Отдаёт SPA с `embed.FS`, принимает ZIP, держит SSE-соединение, пишет и читает disk cache. Подробности — §3.
 - **Tmp unpack area** (`$TMPDIR/go-viz/sources/<project_id>/`). Эфемерный каталог распакованных исходников пользовательского ZIP. Удаляется TTL-sweeper'ом или вручную через `DELETE /api/projects/{id}` (NFR-13).
 - **Disk cache** (`$TMPDIR/go-viz-cache/<project_id>/`). Долгоживущие сериализованные артефакты одного проекта: `parsed.gob`, `graph.json`, `dead-code.json`, `meta.json`. Переживают рестарт сервера (вариант C). Опционально монтируется volume'ом.
@@ -107,11 +109,11 @@
 
 Формат: **ADR-XX.** *Decision.* — **Context:** … — **Alternatives:** … — **Consequences:** …
 
-### ADR-01. Стек фронтенда: React 18 + TypeScript + Vite + Cytoscape.js
+### ADR-01. Стек фронтенда: React 19 + TypeScript 6 + Vite 8 + Cytoscape.js 3.33
 - **Context:** FR-11 требует граф, FR-12..18 — zoom/pan/drag/collapse/aggregation. Нужен типобезопасный UI-слой.
 - **Alternatives:** vanilla + sigma.js (меньше кода, но нет готовых утилит для tooltip/panel); Vue + vis-network (слабее типизация в Vue 2, переход на Vue 3 не даёт выигрыша); D3 + React (пришлось бы писать force-layout и hit-testing руками).
-- **Decision:** Cytoscape.js для графа (зрелый, есть `cytoscape-svg` для FR-22, API стабилен), React+TS для UI-панелей (экосистема, DX, типы на контракте с Go через codegen).
-- **Consequences:** bundle ~350 КБ gzip — приемлемо; добавляет Node-stage в Dockerfile; решения в CSS-stylesheet Cytoscape, а не styled-components (см. ADR-07).
+- **Decision:** Cytoscape.js 3.33 для графа (зрелый, есть `cytoscape-svg` для FR-22, API стабилен), React 19 + TypeScript 6 для UI-панелей (экосистема, DX, типы на контракте с Go через codegen), сборка Vite 8 (Rolldown — быстрее сборка на 10-30×).
+- **Consequences:** bundle ~350 КБ gzip — приемлемо; добавляет Node-stage в Dockerfile; решения в CSS-stylesheet Cytoscape, а не styled-components (см. ADR-07). **Версии сверены на 2026-04-19**: React 19.2.5, TypeScript 6.0.2, Vite 8.0.8, Cytoscape.js 3.33.2 — перед `npm install` исполнитель **обязан** проверить свежие релизы (react.dev/versions, vitejs.dev/blog, typescriptlang.org, js.cytoscape.org) и зафиксировать текущие версии в `package.json`.
 
 ### ADR-02. Парсер Go-кода: `golang.org/x/tools/go/packages` в режиме NeedTypes+NeedTypesInfo+NeedSyntax+NeedImports+NeedDeps+NeedModule
 - **Context:** FR-05 — структуры/интерфейсы/методы/поля; FR-09 — `types.Implements` с embedding.
@@ -128,8 +130,8 @@
 ### ADR-04. Формат доставки: single Docker multi-stage multi-arch image, SPA в `embed.FS`
 - **Context:** NFR-07 (Linux/Windows/macOS, x86-64/ARM64), «один артефакт» удобен для защиты.
 - **Alternatives:** отдельно фронтенд (S3/nginx) + backend (Go) — два артефакта, сложнее для студента-одиночки; собирать на лету на клиенте — нарушает идею «скачал и запустил».
-- **Decision:** три stage'а — `node:20-alpine` для фронта, `golang:1.21-alpine` для бинаря (CGO_ENABLED=0), `gcr.io/distroless/static-debian12` для рантайма; buildx для amd64+arm64 в один манифест.
-- **Consequences:** образ ~15 МБ; `docker run -p 8080:8080` — готово; релиз через git tag + GH Actions.
+- **Decision:** три stage'а — `node:24-alpine` для фронта (Node 24 — активный LTS до 2028-04; Node 20 заканчивает поддержку 2026-04-30), `golang:1.26-alpine` для бинаря (CGO_ENABLED=0), `gcr.io/distroless/static-debian12:nonroot` для рантайма (дефолтная версия distroless; `static-debian13` уже доступна, но не default на 2026-04-19); buildx для amd64+arm64 в один манифест.
+- **Consequences:** образ ~15 МБ; `docker run -p 8080:8080` — готово; релиз через git tag + GH Actions. **Перед каждым релизом** исполнитель обязан проверить: (1) активный Node LTS на nodejs.org/en/about/previous-releases, (2) stable Go на go.dev/doc/devel/release, (3) default-tag distroless на github.com/GoogleContainerTools/distroless. Обновлять pinned-версии в Dockerfile по результатам.
 
 ### ADR-05. Детекция реализаций интерфейсов: `types.Implements` + явный обход embedding через `types.Named.NumMethods`
 - **Context:** FR-09 требует учёт embedding и type aliases. Наивный обход методов типа пропускает унаследованные.
@@ -172,9 +174,9 @@
 
 ### ADR-11. Отсутствие веб-фреймворка на backend
 - **Context:** Один разработчик, короткий срок, stdlib содержит всё нужное.
-- **Alternatives:** gin/echo/chi — дают middleware-стек и router, но лишняя зависимость ради `net/http.ServeMux` + 50 строк middleware.
-- **Decision:** только stdlib. Маршрутизация — `http.ServeMux` (в Go 1.22 есть method-based routing, но мы на 1.21 — пишем тонкий router 20 строк). Middleware — функции `func(http.Handler) http.Handler`.
-- **Consequences:** меньше deps, проще аудит безопасности, проще CI; минус — нет из коробки validation bindings (пишем руками по 5 строк на endpoint).
+- **Alternatives:** gin/echo/chi — дают middleware-стек и router, но лишняя зависимость ради `net/http.ServeMux`.
+- **Decision:** только stdlib. Маршрутизация — `http.ServeMux` с method-based routing (`mux.HandleFunc("POST /api/projects/{id}/analyze", ...)` + `r.PathValue("id")`) — доступно с Go 1.22, мы собираемся на Go 1.26 (см. ADR-04, NFR-05). Middleware — функции `func(http.Handler) http.Handler`.
+- **Consequences:** меньше deps, проще аудит безопасности, проще CI; минус — нет из коробки validation bindings (пишем руками по 5 строк на endpoint). Документация по routing-патернам — https://pkg.go.dev/net/http#ServeMux (свериться перед имплементацией).
 
 ### ADR-12. Disk cache формат: gob для parsed, JSON для пользовательских артефактов
 - **Context:** `parsed.gob` — только для сервера, читаем мы сами; `graph.json` и `dead-code.json` может открыть пользователь.
@@ -192,7 +194,7 @@
 | NFR-02 (5 с первой отрисовки) | Клиент рендерит `partial_graph` чанками — первые узлы появляются до завершения reachability |
 | NFR-03 (< 100 мс UI) | Фильтры FR-14 — чисто клиентский CSS-класс toggle, без запроса |
 | NFR-04 (лимиты ZIP) | `MaxBytesReader` + счётчики в ProjectLoader до распаковки |
-| NFR-05 (Go 1.21+) | `go.mod: go 1.21`; CI матрица `{1.21, latest}` |
+| NFR-05 (Go 1.24+) | `go.mod: go 1.26` (актуальный stable на 2026-04-19); CI матрица `{1.25, 1.26}` |
 | NFR-06 (ES2020 + SVG) | Vite target `es2020`, `cytoscape-svg` официально поддерживается |
 | NFR-07 (multi-OS/arch) | `docker buildx --platform linux/amd64,linux/arm64`; CGO_ENABLED=0 |
 | NFR-08 (partial + warnings) | `Warning[]` в каждом SSE-`done` и в `Graph`; Parser не падает на `packages.Errors` |
@@ -235,5 +237,30 @@
 - **Persistence проектов между рестартами без volume.** Если disk cache в эфемерном контейнере — проекты теряются. Документируется в README.
 - **Go-tool chain в контейнере.** Мы НЕ компилируем пользовательский код (только анализируем), но `packages.Load` в режиме с типами требует резолва импортов — зависит от настройки `GOFLAGS`. Проверить на защите на крупном примере.
 - **HTTPS.** Локально не нужен; для LAN — ставится Caddy перед контейнером.
+
+---
+
+## 11. Политика актуальности версий (binding для исполнителя)
+
+Все версии в этом документе зафиксированы на **2026-04-19**. Релизы языков/рантаймов/библиотек выходят часто, и к моменту имплементации (phase 3) эти числа почти наверняка устареют. Исполнитель **обязан** проверить актуальность в следующих точках:
+
+1. **На старте каждой фазы реализации.** Перед `go mod init` / `npm init` / `FROM` в Dockerfile — зайти на официальные release-страницы и зафиксировать актуальные stable-версии в соответствующих lock-файлах.
+2. **Перед каждым релизом (git tag v*).** Проверить, что pinned-версии не получили critical-security-patch; если получили — обновить + rebuild + rerelease.
+3. **Если в README / CI / Dockerfile используется `latest`-тег** — он запрещён. Только pinned major.minor(.patch) версии.
+
+Источники, которые надо проверять (authoritative):
+
+| Технология | Источник | Что смотреть |
+|---|---|---|
+| Go stable | https://go.dev/doc/devel/release | последний `Go 1.N.M (released YYYY-MM-DD)` |
+| React | https://react.dev/versions | «Latest version» |
+| Node.js LTS | https://nodejs.org/en/about/previous-releases | Active LTS + Maintenance |
+| Vite | https://vite.dev/releases | последний major-release post |
+| TypeScript | https://www.typescriptlang.org/ | «Download» в хедере |
+| Cytoscape.js | https://js.cytoscape.org/ / https://github.com/cytoscape/cytoscape.js/releases | latest tag |
+| distroless | https://github.com/GoogleContainerTools/distroless | дефолтный `-debianNN` тег |
+| x/tools/go/packages | https://pkg.go.dev/golang.org/x/tools/go/packages | API stability notes |
+
+Актуализация — это **обязательное требование** (не nice-to-have). Любой PR, который использует версии старше указанных в таблице выше без обоснования, не вливается.
 
 ---

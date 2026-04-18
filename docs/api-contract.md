@@ -82,7 +82,7 @@ curl -sSf -X POST http://localhost:8080/api/projects \
 
 Главный endpoint. Возвращает `text/event-stream`. Клиент открывает через `EventSource` либо через `fetch` + ручной парсинг.
 
-EventSource не поддерживает POST-тело (MDN) — в варианте C мы принимаем POST с body (конфиг анализа) и сами перекладываем соединение на SSE. На клиенте используем `fetch()` с `ReadableStream` (есть polyfill через `@microsoft/fetch-event-source`), а не `EventSource`.
+EventSource не поддерживает POST-тело (MDN) — в варианте C мы принимаем POST с body (конфиг анализа) и сами перекладываем соединение на SSE. На клиенте используем `fetch()` с `ReadableStream` и собственным SSE-парсером (~50 строк TS — разделитель `\n\n`, префиксы `event:`/`data:`/`id:`), без внешней библиотеки. `@microsoft/fetch-event-source` на 2026-04-19 **не поддерживается** (последнее обновление 2021-04); если всё-таки хочется готовую библиотеку — перед выбором проверить актуальные maintained-форки через `npm trends` и свериться с их статусом maintenance (issue tracker, последний release, security advisories).
 
 ### Request
 
