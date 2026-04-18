@@ -1,0 +1,42 @@
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/
+/dist/
+coverage.out
+coverage.html
+*.test
+*.out
+
+# Node / Frontend
+node_modules/
+/web/dist/
+/web/build/
+.cache/
+
+# Python (для excalidraw render и скриптов)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/settings.json.example
+!.vscode/extensions.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs & temp
+*.log
+tmp/
+
+# Env
+.env
+.env.local
