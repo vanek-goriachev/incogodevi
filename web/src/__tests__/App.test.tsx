@@ -36,10 +36,10 @@ describe('App', () => {
     ).toHaveTextContent('Go Dependencies Visualizer');
   });
 
-  it('switches to the analyzing screen via the Simulate analyze button', async () => {
+  it('switches to the analyzing screen via the top-bar Analyzing button', async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(screen.getByRole('button', { name: 'Simulate analyze' }));
+    await user.click(screen.getByRole('button', { name: 'Analyzing' }));
     expect(screen.getByTestId('screen-analyzing')).toBeInTheDocument();
   });
 
