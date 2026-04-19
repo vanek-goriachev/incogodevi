@@ -11,7 +11,7 @@ Go 1.26 (stdlib `net/http.ServeMux` method-routing + `x/tools/go/packages` v0.44
 | ID | Название | Зависит от | Size | Component | Status |
 |----|----------|-----------|------|-----------|--------|
 | T01 | Scaffold backend | — | S | infra | [x] |
-| T02 | Scaffold frontend | — | S | infra | [ ] |
+| T02 | Scaffold frontend | — | S | infra | [x] |
 | T03 | CI GitHub Actions | T01, T02 | S | infra | [ ] |
 | T04 | Доменные типы | T01 | M | backend/domain | [ ] |
 | T05 | DiskCacheManager | T01, T04 | M | backend/cache | [ ] |
@@ -128,7 +128,7 @@ graph TD
 
 ## Статус
 - [x] T01 Scaffold backend
-- [ ] T02 Scaffold frontend
+- [x] T02 Scaffold frontend
 - [ ] T03 CI GitHub Actions
 - [ ] T04 Доменные типы
 - [ ] T05 DiskCacheManager
