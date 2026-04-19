@@ -6,10 +6,12 @@
 *.dylib
 /bin/
 /dist/
+server/bin/
 coverage.out
 coverage.html
 *.test
 *.out
+*.prof
 
 # Node / Frontend
 node_modules/
