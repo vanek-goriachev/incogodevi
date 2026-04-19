@@ -55,6 +55,13 @@ export type AnalyzeEventCallback = (
     | { type: 'unknown'; name: string; raw: string },
 ) => void;
 
+/**
+ * Optional error handler invoked when the SSE connection rejects before any
+ * event arrives (HTTP 4xx/5xx, network drop, malformed stream). The callback
+ * receives the same `ApiError` that would surface from a JSON endpoint.
+ */
+export type AnalyzeErrorCallback = (err: ApiError) => void;
+
 /** Optional progress callback for multipart upload. */
 export type UploadProgressCallback = (loaded: number, total: number | undefined) => void;
 
@@ -147,14 +154,32 @@ export class ApiClient {
    * `POST /api/projects/{id}/analyze` — open the SSE stream and dispatch
    * typed events to `onEvent`. Returns an `AbortController`; calling
    * `.abort()` closes the connection (server sees `ctx.Err() = canceled`).
+   *
+   * Pre-stream rejections (HTTP 4xx/5xx body, dropped TCP) are surfaced
+   * through the optional `onError` callback so the caller can render a
+   * fallback UI without monkey-patching `unhandledrejection`.
    */
   analyzeProject(
     projectId: string,
     spec: { entry_points?: EntryPointSpec; filters?: Filters },
     onEvent: AnalyzeEventCallback,
+    onError?: AnalyzeErrorCallback,
   ): AbortController {
     const controller = new AbortController();
-    void this.runAnalyzeStream(projectId, spec, onEvent, controller);
+    this.runAnalyzeStream(projectId, spec, onEvent, controller).catch((err: unknown) => {
+      if (controller.signal.aborted) {
+        return;
+      }
+      const wrapped = err instanceof ApiError
+        ? err
+        : new ApiError(0, {
+            code: 'network_error',
+            message: err instanceof Error ? err.message : 'analyze stream failed',
+          });
+      if (onError !== undefined) {
+        onError(wrapped);
+      }
+    });
     return controller;
   }
 

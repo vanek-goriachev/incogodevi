@@ -1,0 +1,20 @@
+T19 E2E run starting
+  fixtures: /Users/isegoryachev/Desktop/University/course_project/code_v2/project/web/e2e/fixtures
+J1: upload simple.zip and observe Analyzing -> Main transition
+  screenshot: j1-01-analyzing-badges.png
+  screenshot: j1-02-main-after-done.png
+  main screen project name: example.com/simple
+  -> PASS: scenario_j1_upload_through_analyzing_to_main
+J2: stall the SSE stream, cancel, verify cancelled UI, retry
+  screenshot: j2-01-streaming.png
+  screenshot: j2-02-cancel-visible.png
+  screenshot: j2-03-cancelled.png
+  observed 2 analyze calls before retry
+  screenshot: j2-04-after-retry.png
+  -> PASS: scenario_j2_cancel_and_retry
+J3: backend returns 404 for the analyze stream
+  console[error]: Failed to load resource: the server responded with a status of 404 (Not Found)
+  failure code: 'project_not_found'
+  screenshot: j3-01-failed.png
+  -> PASS: scenario_j3_pre_stream_failure
+T19 E2E run SUCCESS

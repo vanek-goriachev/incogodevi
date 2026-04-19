@@ -20,9 +20,8 @@ import { RouteSwitch, Router, useRouter } from './Router';
 import { ThemeProvider, useTheme, type ThemeChoice } from './theme';
 import { ToastProvider } from './Toasts';
 import { ApiClient } from '../api/client';
+import { AnalyzingView } from '../pages/Analyzing';
 import { Landing } from '../pages/Landing/Landing';
-
-const SHELL_VERSION = '0.1.0';
 
 const apiClient = new ApiClient();
 
@@ -50,7 +49,7 @@ function Shell(): JSX.Element {
   const screens = useMemo(
     () => ({
       landing: <Landing apiClient={apiClient} />,
-      analyzing: <AnalyzingPlaceholder />,
+      analyzing: <AnalyzingView apiClient={apiClient} />,
       main: <MainPlaceholder />,
       error: <ErrorPlaceholder />,
     }),
@@ -116,29 +115,6 @@ function TopBar(): JSX.Element {
         </select>
       </label>
     </header>
-  );
-}
-
-function AnalyzingPlaceholder(): JSX.Element {
-  const { state } = useRouter();
-  return (
-    <section className="screen screen--analyzing" data-testid="screen-analyzing">
-      <h2>Analyzing</h2>
-      <p data-testid="analyzing-project">
-        {state.projectName !== undefined && state.projectName !== ''
-          ? `Project: ${state.projectName}`
-          : 'No project selected.'}
-      </p>
-      <p>
-        <small data-testid="analyzing-project-id">
-          {state.projectId !== undefined ? `id: ${state.projectId}` : ''}
-        </small>
-      </p>
-      <p>SSE phase ticker lands in T19.</p>
-      <footer className="screen__footer">
-        <small>Shell version {SHELL_VERSION}</small>
-      </footer>
-    </section>
   );
 }
 
