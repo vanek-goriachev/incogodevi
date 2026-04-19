@@ -1,22 +1,24 @@
 // Command server starts the Go Dependencies Visualizer HTTP backend.
 //
-// At this stage the binary exposes only the health endpoint defined in
-// docs/api-contract.md §7. Real analysis endpoints land in later tasks.
+// The binary wires the disk cache manager and the api.Server into a single
+// http.Server with graceful shutdown. Real analysis endpoints are still
+// placeholders here — they are filled in by tasks T13–T16.
 package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/vanek-goriachev/incogodevi/server/internal/api"
+	"github.com/vanek-goriachev/incogodevi/server/internal/cache"
+	"github.com/vanek-goriachev/incogodevi/server/internal/web"
 )
 
 // version is the build-time version string. Bumped together with releases.
@@ -37,12 +39,33 @@ func main() {
 	logger := newLogger(cfg.logLevel)
 	slog.SetDefault(logger)
 
-	startedAt := time.Now()
-	mux := newMux(startedAt)
+	cacheMgr, err := cache.New(cache.Options{Logger: logger})
+	if err != nil {
+		logger.Error("cache init", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer func() {
+		if cerr := cacheMgr.Close(); cerr != nil {
+			logger.Error("cache close", slog.String("error", cerr.Error()))
+		}
+	}()
+
+	apiSrv, err := api.NewServer(api.Config{
+		Cache:          cacheMgr,
+		StaticFS:       web.DistFS(),
+		Logger:         logger,
+		Version:        version,
+		StartedAt:      time.Now(),
+		TrustedOrigins: parseList(os.Getenv("GOVIZ_TRUSTED_ORIGINS")),
+	})
+	if err != nil {
+		logger.Error("api init", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 
 	srv := &http.Server{
 		Addr:              cfg.addr,
-		Handler:           mux,
+		Handler:           apiSrv.Handler(),
 		ReadHeaderTimeout: readHeaderTimeout,
 		// WriteTimeout is intentionally zero: SSE responses stream for the
 		// entire lifetime of an analysis (see architecture.md §3.1, ADR-03).
@@ -55,7 +78,10 @@ func main() {
 
 	serveErr := make(chan error, 1)
 	go func() {
-		logger.Info("server starting", slog.String("addr", srv.Addr), slog.String("version", version))
+		logger.Info("server starting",
+			slog.String("addr", srv.Addr),
+			slog.String("version", version),
+		)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serveErr <- err
 			return
@@ -121,51 +147,19 @@ func newLogger(level string) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
 }
 
-// newMux registers all HTTP routes and returns a ready-to-serve mux.
-// startedAt is captured so /api/healthz can report process uptime.
-func newMux(startedAt time.Time) *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/healthz", healthHandler(startedAt, &activeProjects))
-	return mux
-}
-
-// activeProjects is a placeholder counter for the number of live projects.
-// Real bookkeeping is wired up in T13 alongside the orchestrator.
-var activeProjects atomic.Int64
-
-// healthResponse mirrors the schema in docs/api-contract.md §7.
-type healthResponse struct {
-	Status         string `json:"status"`
-	Version        string `json:"version"`
-	UptimeSec      int64  `json:"uptime_sec"`
-	ActiveProjects int64  `json:"active_projects"`
-}
-
-// healthHandler returns a handler that always responds 200 with the
-// service health envelope. It never returns 4xx/5xx — if the process is
-// alive the answer is 200 (api-contract §7).
-func healthHandler(startedAt time.Time, active *atomic.Int64) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		body := healthResponse{
-			Status:         "ok",
-			Version:        version,
-			UptimeSec:      int64(time.Since(startedAt).Seconds()),
-			ActiveProjects: active.Load(),
-		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(body); err != nil {
-			// Response is already partially written; just record the failure.
-			slog.Default().Error("encode health response", slog.String("error", err.Error()))
+// parseList splits an environment variable on commas, trims whitespace and
+// drops empty entries. Used to parse GOVIZ_TRUSTED_ORIGINS without pulling in
+// a dedicated config library.
+func parseList(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
 		}
 	}
-}
-
-// Compile-time assertion that healthResponse stays JSON-encodable.
-var _ = func() error {
-	_, err := json.Marshal(healthResponse{})
-	if err != nil {
-		return fmt.Errorf("healthResponse not encodable: %w", err)
-	}
-	return nil
+	return out
 }
