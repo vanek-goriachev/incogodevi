@@ -70,6 +70,29 @@ func TestBuildCallEdgeWeightDedup(t *testing.T) {
 	t.Fatalf("expected calls edge Caller->Target")
 }
 
+func TestBuildHandlesBodylessFuncDecl(t *testing.T) {
+	// Regression test for the nil-pointer crash in addCallsAndReferences
+	// when a parsed file contains a function declaration without a body
+	// (e.g. assembly-implemented helpers). Building used to panic; with
+	// the nil-body guard in place it must succeed and still register the
+	// declarations as Func nodes.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Build panicked on body-less FuncDecl: %v", r)
+		}
+	}()
+
+	g := buildGraph(t, loadFixture(t, "funcdecl_nobody"))
+
+	if extern := nodeByName(g, "extern", domain.NodeKindFunc); extern == nil {
+		t.Fatalf("expected extern Func node to be present")
+	}
+	caller := nodeByName(g, "Caller", domain.NodeKindFunc)
+	if caller == nil {
+		t.Fatalf("expected Caller Func node to be present")
+	}
+}
+
 func TestBuildOnReducedOnlyEmitsWarning(t *testing.T) {
 	res := loadFixture(t, "simple")
 	// Strip the live view so addPackage falls back to the no-types branch.
