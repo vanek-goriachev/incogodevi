@@ -59,11 +59,11 @@
 Цветовая/типографическая консистентность — из `tokens.css` (T17).
 
 ## Acceptance criteria
-- [ ] FR-01 acceptance: drag-n-drop `.zip` принимается; отсутствие `go.mod` → HTTP 400 → inline message «archive is missing go.mod at root» (английский).
-- [ ] NFR-11 acceptance: от открытия landing до видимого analyzing view — ≤ 3 действия пользователя (drop → ожидание → навигация автоматическая).
-- [ ] File > 50 MB → клиентская проверка ломает upload до запроса (сообщение из FR mapping); альтернативно сервер отвечает 413.
-- [ ] Recent projects persist между reload.
-- [ ] `Restore` на expired project → toast, возврат на landing.
+- [x] FR-01 acceptance: drag-n-drop `.zip` принимается; отсутствие `go.mod` → HTTP 400 → inline message «archive is missing go.mod at root» (английский).
+- [x] NFR-11 acceptance: от открытия landing до видимого analyzing view — ≤ 3 действия пользователя (drop → ожидание → навигация автоматическая).
+- [x] File > 50 MB → клиентская проверка ломает upload до запроса (сообщение из FR mapping); альтернативно сервер отвечает 413.
+- [x] Recent projects persist между reload.
+- [x] `Restore` на expired project → toast, возврат на landing.
 
 ## План тестирования
 
@@ -86,10 +86,10 @@
 - **J3**: reload → recent list содержит последний project.
 
 ## Definition of Done
-- [ ] `npm run typecheck|lint|test|build` — зелёные.
-- [ ] `test-evidence/T18/` создан и содержит артефакты.
-- [ ] Коммиты `feat(web): landing + upload`.
-- [ ] PR, merge, `tasks/README.md` T18 `[x]`.
+- [x] `npm run typecheck|lint|test|build` — зелёные.
+- [x] `test-evidence/T18/` создан и содержит артефакты.
+- [x] Коммиты `feat(web): landing + upload`.
+- [x] PR, merge, `tasks/README.md` T18 `[x]`.
 
 ## Как работать
 1. `git checkout main && git pull`

@@ -27,7 +27,7 @@ Go 1.26 (stdlib `net/http.ServeMux` method-routing + `x/tools/go/packages` v0.44
 | T15 | POST /analyze (SSE) | T10, T11, T13 | L | backend/api | [x] |
 | T16 | GET /graph + /dead-code | T11, T12, T15 | M | backend/api | [x] |
 | T17 | Frontend app shell | T02 | M | frontend/core | [x] |
-| T18 | Landing + upload | T14, T17 | M | frontend/upload | [ ] |
+| T18 | Landing + upload | T14, T17 | M | frontend/upload | [x] |
 | T19 | Analyzing view (SSE) | T15, T17 | M | frontend/sse | [ ] |
 | T20 | Cytoscape integration | T16, T17 | L | frontend/graph | [ ] |
 | T21 | Filters panel | T20 | S | frontend/graph | [ ] |
@@ -144,7 +144,7 @@ graph TD
 - [x] T15 POST /analyze (SSE)
 - [x] T16 GET /graph + /dead-code
 - [x] T17 Frontend app shell
-- [ ] T18 Landing + upload
+- [x] T18 Landing + upload
 - [ ] T19 Analyzing view (SSE)
 - [ ] T20 Cytoscape integration
 - [ ] T21 Filters panel
