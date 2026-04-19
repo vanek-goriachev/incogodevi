@@ -18,8 +18,9 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { Layout } from './Layout';
 import { RouteSwitch, Router, useRouter } from './Router';
 import { ThemeProvider, useTheme, type ThemeChoice } from './theme';
-import { ToastProvider, useToast } from './Toasts';
+import { ToastProvider } from './Toasts';
 import { ApiClient } from '../api/client';
+import { Landing } from '../pages/Landing/Landing';
 
 const SHELL_VERSION = '0.1.0';
 
@@ -48,7 +49,7 @@ function App(): JSX.Element {
 function Shell(): JSX.Element {
   const screens = useMemo(
     () => ({
-      landing: <LandingPlaceholder />,
+      landing: <Landing apiClient={apiClient} />,
       analyzing: <AnalyzingPlaceholder />,
       main: <MainPlaceholder />,
       error: <ErrorPlaceholder />,
@@ -118,41 +119,22 @@ function TopBar(): JSX.Element {
   );
 }
 
-function LandingPlaceholder(): JSX.Element {
-  const { showToast } = useToast();
-  const { navigate } = useRouter();
-  const checkApi = useCallback(() => {
-    apiClient
-      .healthz()
-      .then((info) => {
-        showToast(`Backend ok — uptime ${String(info.uptime_sec)}s`, 'success');
-      })
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : 'unknown error';
-        showToast(`Health check failed: ${message}`, 'error');
-      });
-  }, [showToast]);
-
+function AnalyzingPlaceholder(): JSX.Element {
+  const { state } = useRouter();
   return (
-    <section className="screen screen--landing" data-testid="screen-landing">
-      <h2>Welcome</h2>
-      <p>
-        Drop a Go project ZIP to start. Upload UI ships in T18; this shell only
-        verifies routing, theme, toasts and API plumbing.
+    <section className="screen screen--analyzing" data-testid="screen-analyzing">
+      <h2>Analyzing</h2>
+      <p data-testid="analyzing-project">
+        {state.projectName !== undefined && state.projectName !== ''
+          ? `Project: ${state.projectName}`
+          : 'No project selected.'}
       </p>
-      <div className="screen__actions">
-        <button type="button" onClick={checkApi}>
-          check API
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            navigate('analyzing');
-          }}
-        >
-          Simulate analyze
-        </button>
-      </div>
+      <p>
+        <small data-testid="analyzing-project-id">
+          {state.projectId !== undefined ? `id: ${state.projectId}` : ''}
+        </small>
+      </p>
+      <p>SSE phase ticker lands in T19.</p>
       <footer className="screen__footer">
         <small>Shell version {SHELL_VERSION}</small>
       </footer>
@@ -160,20 +142,16 @@ function LandingPlaceholder(): JSX.Element {
   );
 }
 
-function AnalyzingPlaceholder(): JSX.Element {
-  return (
-    <section className="screen screen--analyzing" data-testid="screen-analyzing">
-      <h2>Analyzing</h2>
-      <p>SSE phase ticker lands in T19.</p>
-    </section>
-  );
-}
-
 function MainPlaceholder(): JSX.Element {
+  const { state } = useRouter();
+  const title =
+    state.projectName !== undefined && state.projectName !== ''
+      ? state.projectName
+      : 'Project info';
   return (
     <section className="screen screen--main" data-testid="screen-main">
       <Layout
-        topBar={<strong>Project info</strong>}
+        topBar={<strong data-testid="main-project-name">{title}</strong>}
         leftRail={<small>Entry points · Filters</small>}
         rightRail={<small>Info · Dead code · Export</small>}
       >

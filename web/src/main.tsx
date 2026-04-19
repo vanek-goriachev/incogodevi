@@ -4,6 +4,7 @@ import App from './app/App';
 import './styles/reset.css';
 import './styles/tokens.css';
 import './styles/app.css';
+import './pages/Landing/Landing.css';
 
 const container = document.getElementById('root');
 if (!container) {

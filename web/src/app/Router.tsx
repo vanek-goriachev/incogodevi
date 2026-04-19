@@ -5,6 +5,10 @@
  * avoid pulling in `react-router` to keep the shell bundle small (task T17
  * AC: ≤ 200 KB gzip). Navigation is exposed through React Context so any
  * component can call `navigate('main')`.
+ *
+ * Optional per-navigation state (T18) carries the current `projectId` so that
+ * the Analyzing and Main screens know which project the user just opened. The
+ * value is held in memory only (no URL); reload returns the user to Landing.
  */
 
 import {
@@ -21,9 +25,16 @@ export type Route = 'landing' | 'analyzing' | 'main' | 'error';
 
 export const ROUTES: readonly Route[] = ['landing', 'analyzing', 'main', 'error'];
 
+/** Per-navigation state attached by the caller of `navigate`. */
+export interface RouteState {
+  projectId?: string;
+  projectName?: string;
+}
+
 export interface RouterApi {
   route: Route;
-  navigate: (next: Route) => void;
+  state: RouteState;
+  navigate: (next: Route, state?: RouteState) => void;
 }
 
 const RouterContext = createContext<RouterApi | null>(null);
@@ -32,14 +43,25 @@ export interface RouterProps {
   children: ReactNode;
   /** Initial screen on mount. Defaults to `'landing'`. */
   initialRoute?: Route;
+  /** Initial route state, useful for tests and deep links from outside. */
+  initialState?: RouteState;
 }
 
-export function Router({ children, initialRoute = 'landing' }: RouterProps): JSX.Element {
+export function Router({
+  children,
+  initialRoute = 'landing',
+  initialState = {},
+}: RouterProps): JSX.Element {
   const [route, setRoute] = useState<Route>(initialRoute);
-  const navigate = useCallback((next: Route) => {
+  const [state, setState] = useState<RouteState>(initialState);
+  const navigate = useCallback((next: Route, nextState: RouteState = {}) => {
     setRoute(next);
+    setState(nextState);
   }, []);
-  const value = useMemo<RouterApi>(() => ({ route, navigate }), [route, navigate]);
+  const value = useMemo<RouterApi>(
+    () => ({ route, state, navigate }),
+    [route, state, navigate],
+  );
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }
 

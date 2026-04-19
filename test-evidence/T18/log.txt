@@ -1,0 +1,18 @@
+T18 E2E run starting
+  fixtures: /Users/isegoryachev/Desktop/University/course_project/code_v2/project/web/e2e/fixtures
+J1: drop a valid Go ZIP and reach the Analyzing screen
+  screenshot: j1-01-landing.png
+  screenshot: j1-02-dragging.png
+  screenshot: j1-03-analyzing.png
+  analyzing screen mentions: Project: example.com/simple
+  -> PASS: scenario_j1_happy_path
+J2: drop an archive without go.mod and surface the inline error
+  console[error]: Failed to load resource: the server responded with a status of 400 (Bad Request)
+  inline error visible, code='go_mod_missing'
+  screenshot: j2-01-error.png
+  -> PASS: scenario_j2_missing_gomod
+J3: recent-projects list survives a reload
+  recent-list items after reload: 1
+  screenshot: j3-01-recent.png
+  -> PASS: scenario_j3_recent_persists
+T18 E2E run SUCCESS
