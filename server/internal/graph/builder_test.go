@@ -21,39 +21,46 @@ import (
 // and returns the resulting LoadResult ready to be fed to Builder.Build.
 func loadFixture(t *testing.T, name string) *parser.LoadResult {
 	t.Helper()
+	return loadFixtureTB(t, name)
+}
+
+// loadFixtureTB is the testing.TB variant used by both the regular tests and
+// the benchmarks in this package.
+func loadFixtureTB(tb testing.TB, name string) *parser.LoadResult {
+	tb.Helper()
 
 	src := filepath.Join("testdata", name)
 	stat, err := os.Stat(src)
 	if err != nil || !stat.IsDir() {
-		t.Fatalf("missing fixture %q: %v", name, err)
+		tb.Fatalf("missing fixture %q: %v", name, err)
 	}
 
 	mgr, err := cache.New(cache.Options{
-		RootTmp:       filepath.Join(t.TempDir(), "sources"),
-		RootCache:     filepath.Join(t.TempDir(), "cache"),
+		RootTmp:       filepath.Join(tb.TempDir(), "sources"),
+		RootCache:     filepath.Join(tb.TempDir(), "cache"),
 		IdleTTL:       time.Hour,
 		SweepInterval: time.Hour,
 	})
 	if err != nil {
-		t.Fatalf("cache.New: %v", err)
+		tb.Fatalf("cache.New: %v", err)
 	}
-	t.Cleanup(func() { _ = mgr.Close() })
+	tb.Cleanup(func() { _ = mgr.Close() })
 
 	project, err := mgr.NewProject(name, 0, 0)
 	if err != nil {
-		t.Fatalf("NewProject: %v", err)
+		tb.Fatalf("NewProject: %v", err)
 	}
 	if err := copyTree(src, project.SourcesDir); err != nil {
-		t.Fatalf("copy fixture: %v", err)
+		tb.Fatalf("copy fixture: %v", err)
 	}
 
 	p := parser.New(mgr, nil)
 	res, err := p.Load(context.Background(), project.Meta.ID, nil)
 	if err != nil {
-		t.Fatalf("parser.Load: %v", err)
+		tb.Fatalf("parser.Load: %v", err)
 	}
 	if res.TypesUnavailable {
-		t.Fatalf("expected live types from a fresh load")
+		tb.Fatalf("expected live types from a fresh load")
 	}
 	return res
 }
