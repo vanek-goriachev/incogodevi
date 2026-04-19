@@ -91,7 +91,7 @@ type blobEnvelope struct {
 // types.Implements).
 type LoadResult struct {
 	Packages         []*ReducedPackage
-	LivePackages     []livePackage
+	LivePackages     []LivePackage
 	Warnings         []domain.Warning
 	ElapsedMS        int
 	TypesUnavailable bool
