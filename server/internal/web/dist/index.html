@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Go Dependencies Visualizer — dev placeholder</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        max-width: 36rem;
+        margin: 4rem auto;
+        padding: 0 1rem;
+        color: #1f2933;
+        line-height: 1.5;
+      }
+      code {
+        background: #f1f5f9;
+        padding: 0.1rem 0.35rem;
+        border-radius: 0.25rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Go Dependencies Visualizer</h1>
+    <p>
+      This is the placeholder bundle shipped with the development server. The
+      real React + Cytoscape SPA is produced by the <code>web/</code> Vite
+      project and copied into <code>server/internal/web/dist</code> at Docker
+      build time (T25).
+    </p>
+    <p>
+      During local development, run the Vite dev server alongside this binary
+      — it proxies <code>/api/*</code> to <code>http://localhost:8080</code>.
+    </p>
+    <p>
+      The HTTP API is healthy: try
+      <a href="/api/healthz"><code>/api/healthz</code></a>.
+    </p>
+  </body>
+</html>
