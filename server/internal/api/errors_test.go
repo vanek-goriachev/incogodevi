@@ -21,6 +21,10 @@ func TestErrorBuilders(t *testing.T) {
 		{"archive_too_large", errArchiveTooLarge(123), codeArchiveTooLarge, http.StatusRequestEntityTooLarge},
 		{"forbidden_origin", errForbiddenOrigin("https://x"), codeForbiddenOrigin, http.StatusForbidden},
 		{"method_not_allowed", errMethodNotAllowed("PATCH"), codeMethodNotAllowed, http.StatusMethodNotAllowed},
+		{"no_graph_yet", errNoGraphYet("xyz"), codeNoGraphYet, http.StatusNotFound},
+		{"stale_cache", errStaleCache("xyz"), codeStaleCache, http.StatusServiceUnavailable},
+		{"invalid_scope", errInvalidScope("foo", []string{"a", "b"}), codeInvalidScope, http.StatusBadRequest},
+		{"invalid_format", errInvalidFormat("xml"), codeInvalidFormat, http.StatusBadRequest},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
