@@ -323,7 +323,7 @@ func TestDeleteProject_Success(t *testing.T) {
 	}
 }
 
-func TestPlaceholders_Return501(t *testing.T) {
+func TestGraphAndDeadCode_NoAnalysisYetReturns404(t *testing.T) {
 	t.Parallel()
 
 	srv, mgr := newTestServer(t)
@@ -331,8 +331,6 @@ func TestPlaceholders_Return501(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
-	// /analyze is no longer a placeholder (T15); the remaining stubs land in
-	// T16 and continue to advertise themselves as not-implemented.
 	cases := []struct {
 		name   string
 		method string
@@ -351,11 +349,11 @@ func TestPlaceholders_Return501(t *testing.T) {
 				t.Fatalf("%s: %v", c.name, err)
 			}
 			t.Cleanup(func() { _ = resp.Body.Close() })
-			if resp.StatusCode != http.StatusNotImplemented {
-				t.Errorf("status: got %d, want 501", resp.StatusCode)
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("status: got %d, want 404", resp.StatusCode)
 			}
 			body, _ := io.ReadAll(resp.Body)
-			if !strings.Contains(string(body), `"code":"not_implemented"`) {
+			if !strings.Contains(string(body), `"code":"no_graph_yet"`) {
 				t.Errorf("envelope: %s", body)
 			}
 		})

@@ -140,8 +140,6 @@ func (s *Server) Handler() http.Handler { return s.handler }
 func (s *Server) Mux() *http.ServeMux { return s.mux }
 
 // registerRoutes wires up every endpoint defined in docs/api-contract.md.
-// Upload (POST /api/projects) is the real T14 implementation; analyze, graph
-// and dead-code are still placeholders filled in by tasks T15–T16.
 func (s *Server) registerRoutes(staticFS fs.FS) {
 	s.mux.HandleFunc("GET /api/healthz", s.handleHealthz)
 
@@ -152,8 +150,8 @@ func (s *Server) registerRoutes(staticFS fs.FS) {
 	s.mux.HandleFunc("DELETE /api/projects/{id}", s.handleDeleteProject)
 
 	s.mux.HandleFunc("POST /api/projects/{id}/analyze", s.handleAnalyze)
-	s.mux.HandleFunc("GET /api/projects/{id}/graph", s.handleGraphPlaceholder)
-	s.mux.HandleFunc("GET /api/projects/{id}/dead-code", s.handleDeadCodePlaceholder)
+	s.mux.HandleFunc("GET /api/projects/{id}/graph", s.handleGraph)
+	s.mux.HandleFunc("GET /api/projects/{id}/dead-code", s.handleDeadCode)
 
 	// Static SPA. Anything unmatched by /api/* falls through to the file
 	// server, which 404s gracefully when an asset is missing — important
@@ -255,22 +253,4 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// handleGraphPlaceholder is the 501 stub replaced in T16.
-func (s *Server) handleGraphPlaceholder(w http.ResponseWriter, r *http.Request) {
-	if _, err := asProjectIDOr404(r.PathValue("id")); err != nil {
-		writeAPIError(w, r, err)
-		return
-	}
-	writeAPIError(w, r, errNotImplemented("GET /api/projects/{id}/graph", "T16"))
-}
-
-// handleDeadCodePlaceholder is the 501 stub replaced in T16.
-func (s *Server) handleDeadCodePlaceholder(w http.ResponseWriter, r *http.Request) {
-	if _, err := asProjectIDOr404(r.PathValue("id")); err != nil {
-		writeAPIError(w, r, err)
-		return
-	}
-	writeAPIError(w, r, errNotImplemented("GET /api/projects/{id}/dead-code", "T16"))
 }

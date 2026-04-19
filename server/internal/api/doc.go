@@ -5,6 +5,6 @@
 // (panic recovery, request id, structured access log, same-origin CORS) and
 // returns errors using the canonical envelope from docs/api-contract.md §0.
 //
-// Real analysis endpoints (/api/projects, /analyze, /graph, /dead-code) are
-// installed as 501 placeholders here and replaced by tasks T13–T16.
+// All analysis endpoints (/api/projects, /analyze, /graph, /dead-code) are
+// implemented in this package; later tasks layer on the SPA and CLI tooling.
 package api
