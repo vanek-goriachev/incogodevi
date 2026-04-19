@@ -25,6 +25,10 @@ const (
 	codeInvalidFilters       = "invalid_filters"
 	codeInvalidBody          = "invalid_body"
 	codeBodyTooLarge         = "body_too_large"
+	codeNoGraphYet           = "no_graph_yet"
+	codeStaleCache           = "stale_cache"
+	codeInvalidScope         = "invalid_scope"
+	codeInvalidFormat        = "invalid_format"
 )
 
 // errProjectNotFound builds the canonical APIError for an unknown / expired
@@ -190,6 +194,51 @@ func errAnalyzeBodyTooLarge(limitBytes int64) *domain.APIError {
 		Message:    "request body exceeds the per-route limit",
 		Details:    map[string]any{"limit_bytes": limitBytes},
 		HTTPStatus: http.StatusRequestEntityTooLarge,
+	}
+}
+
+// errNoGraphYet is returned by /graph and /dead-code when the project exists
+// but no analysis artefact has been written yet (api-contract.md §3, §4).
+func errNoGraphYet(projectID string) *domain.APIError {
+	return &domain.APIError{
+		Code:       codeNoGraphYet,
+		Message:    "no graph available — run /analyze first",
+		Details:    map[string]any{"project_id": projectID},
+		HTTPStatus: http.StatusNotFound,
+	}
+}
+
+// errStaleCache is reported when graph.json or dead-code.json is on disk but
+// structurally invalid. The client must re-run /analyze.
+func errStaleCache(projectID string) *domain.APIError {
+	return &domain.APIError{
+		Code:       codeStaleCache,
+		Message:    "cached artefact is stale — re-run /analyze",
+		Details:    map[string]any{"project_id": projectID},
+		HTTPStatus: http.StatusServiceUnavailable,
+	}
+}
+
+// errInvalidScope reports a /graph?scope=<pkg> request that does not match any
+// known package in the cached graph. Valid package paths are echoed via
+// details.packages so the caller can fix the request.
+func errInvalidScope(scope string, packages []string) *domain.APIError {
+	return &domain.APIError{
+		Code:       codeInvalidScope,
+		Message:    "scope does not match any package in the graph",
+		Details:    map[string]any{"scope": scope, "packages": packages},
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// errInvalidFormat reports a /dead-code?format=<x> request whose value is not
+// one of the documented formats ("json" or "txt").
+func errInvalidFormat(format string) *domain.APIError {
+	return &domain.APIError{
+		Code:       codeInvalidFormat,
+		Message:    "format must be one of: json, txt",
+		Details:    map[string]any{"format": format},
+		HTTPStatus: http.StatusBadRequest,
 	}
 }
 

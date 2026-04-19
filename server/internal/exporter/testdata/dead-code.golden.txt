@@ -1,0 +1,3 @@
+func github.com/acme/example/internal/util.DeprecatedHelper — internal/util/helper.go:42
+func github.com/acme/example/internal/util.OlderHelper — internal/util/helper.go:120
+method github.com/acme/example/store.MongoStore.Close — store/mongo.go:128
