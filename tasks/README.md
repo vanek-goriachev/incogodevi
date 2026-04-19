@@ -20,7 +20,7 @@ Go 1.26 (stdlib `net/http.ServeMux` method-routing + `x/tools/go/packages` v0.44
 | T08 | GraphBuilder | T04, T07 | L | backend/graph | [x] |
 | T09 | InterfaceResolver | T04, T07, T08 | M | backend/graph | [x] |
 | T10 | EntryPointsResolver | T04, T07, T08 | M | backend/entry | [x] |
-| T11 | ReachabilityAnalyzer | T04, T08, T09, T10 | M | backend/reach | [ ] |
+| T11 | ReachabilityAnalyzer | T04, T08, T09, T10 | M | backend/reach | [x] |
 | T12 | HTTP скелет + middleware | T01, T04, T05 | M | backend/api | [ ] |
 | T13 | AnalysisOrchestrator + SSE | T04, T05, T07, T11, T12 | M | backend/api | [ ] |
 | T14 | POST /api/projects | T06, T12 | S | backend/api | [ ] |
@@ -137,7 +137,7 @@ graph TD
 - [x] T08 GraphBuilder
 - [x] T09 InterfaceResolver
 - [x] T10 EntryPointsResolver
-- [ ] T11 ReachabilityAnalyzer
+- [x] T11 ReachabilityAnalyzer
 - [ ] T12 HTTP скелет + middleware
 - [ ] T13 AnalysisOrchestrator + SSE
 - [ ] T14 POST /api/projects
