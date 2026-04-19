@@ -331,13 +331,14 @@ func TestPlaceholders_Return501(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
+	// /analyze is no longer a placeholder (T15); the remaining stubs land in
+	// T16 and continue to advertise themselves as not-implemented.
 	cases := []struct {
 		name   string
 		method string
 		path   string
 		body   io.Reader
 	}{
-		{"analyze", http.MethodPost, "/api/projects/" + string(project.Meta.ID) + "/analyze", strings.NewReader("{}")},
 		{"graph", http.MethodGet, "/api/projects/" + string(project.Meta.ID) + "/graph", nil},
 		{"deadcode", http.MethodGet, "/api/projects/" + string(project.Meta.ID) + "/dead-code", nil},
 	}

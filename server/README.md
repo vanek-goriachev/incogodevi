@@ -1,10 +1,11 @@
 # server
 
 Go backend for the Go Dependencies Visualizer. The binary currently exposes
-project upload (`POST /api/projects`) plus the supporting management endpoints
-(`GET /api/healthz`, `GET /api/projects`, `DELETE /api/projects/{id}`).
-Analysis endpoints (`POST /api/projects/{id}/analyze`, `GET /…/graph`,
-`GET /…/dead-code`) arrive in later tasks (see `tasks/README.md`).
+project upload (`POST /api/projects`), the analysis stream
+(`POST /api/projects/{id}/analyze`) and the supporting management endpoints
+(`GET /api/healthz`, `GET /api/projects`, `DELETE /api/projects/{id}`). The
+remaining read endpoints (`GET /…/graph`, `GET /…/dead-code`) arrive in later
+tasks (see `tasks/README.md`).
 
 ## Requirements
 
@@ -79,6 +80,57 @@ curl -sS -X POST http://localhost:8080/api/projects -F name="solo"
 curl -sS -X POST http://localhost:8080/api/projects -F archive=@./no-mod.zip
 # → 400 {"error":{"code":"go_mod_missing","message":"valid Go module not found"}}
 ```
+
+## Running an analysis
+
+Once a project is uploaded, kick off the analysis pipeline. The endpoint
+streams Server-Sent Events (`text/event-stream`); use `curl -N` so the buffer
+is not closed prematurely. An empty body uses the documented defaults
+(api-contract.md §2):
+
+```sh
+curl -N -X POST http://localhost:8080/api/projects/<project_id>/analyze \
+     -H 'Content-Type: application/json' \
+     -d '{}'
+```
+
+A custom request narrows the entry points and filters:
+
+```sh
+curl -N -X POST http://localhost:8080/api/projects/<project_id>/analyze \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "entry_points": {"mode":"auto","auto_kinds":["main","init"]},
+       "filters":      {"include_kinds":["function","method"],"stdlib_exclude":true}
+     }'
+```
+
+Sample stream (newlines added for clarity):
+
+```
+event: stage
+data: {"stage":"parsing","detail":"…"}
+
+event: progress
+data: {"stage":"reach","percent":42}
+
+event: done
+data: {"status":"ok","duration_ms":1234}
+```
+
+Pre-stream errors are still JSON envelopes:
+
+| HTTP | code                   | when                                                |
+| ---- | ---------------------- | --------------------------------------------------- |
+| 400  | `invalid_body`         | malformed / oversized JSON, unknown / trailing keys |
+| 400  | `invalid_filters`      | `include_kinds` value is not a known node kind      |
+| 400  | `invalid_entry_point`  | malformed FQN in `manual` / `interface_impl` lists  |
+| 404  | `project_not_found`    | project id missing or evicted                       |
+| 409  | `analysis_in_progress` | another `/analyze` for the same project is running  |
+| 413  | `body_too_large`       | request body exceeds 1 MiB                          |
+
+Once the SSE stream has started, every recoverable failure surfaces as a
+`done:failed` event because the client already received `200 OK`.
 
 ## Configuration
 

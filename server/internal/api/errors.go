@@ -22,6 +22,9 @@ const (
 	codeGoModMissing         = "go_mod_missing"
 	codeFileCountExceeded    = "file_count_exceeded"
 	codeUnpackedSizeExceeded = "unpacked_size_exceeded"
+	codeInvalidFilters       = "invalid_filters"
+	codeInvalidBody          = "invalid_body"
+	codeBodyTooLarge         = "body_too_large"
 )
 
 // errProjectNotFound builds the canonical APIError for an unknown / expired
@@ -142,6 +145,51 @@ func errUnpackedSizeExceeded(limitBytes int64) *domain.APIError {
 		Message:    "archive exceeds the unpacked-size limit",
 		Details:    map[string]any{"limit_bytes": limitBytes},
 		HTTPStatus: http.StatusUnprocessableEntity,
+	}
+}
+
+// errAnalysisInProgress mirrors api-contract.md §2's 409 envelope. The handler
+// uses it when single-flight rejects a second concurrent /analyze call.
+func errAnalysisInProgress(projectID string) *domain.APIError {
+	return &domain.APIError{
+		Code:       codeAnalysisInProgress,
+		Message:    "an analysis is already running for this project",
+		Details:    map[string]any{"project_id": projectID},
+		HTTPStatus: http.StatusConflict,
+	}
+}
+
+// errInvalidFilters reports an unknown NodeKind in the include_kinds slice.
+// The bad values are echoed in details so the caller can fix their request.
+func errInvalidFilters(badKinds []string) *domain.APIError {
+	return &domain.APIError{
+		Code:       codeInvalidFilters,
+		Message:    "include_kinds contains values that are not recognised NodeKinds",
+		Details:    map[string]any{"invalid_kinds": badKinds},
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// errInvalidBody covers JSON decoding failures on /analyze: malformed JSON,
+// unknown fields, trailing garbage. We surface a free-form reason so log
+// scanners can distinguish them while clients still see a stable code.
+func errInvalidBody(reason string) *domain.APIError {
+	return &domain.APIError{
+		Code:       codeInvalidBody,
+		Message:    reason,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// errAnalyzeBodyTooLarge mirrors errArchiveTooLarge but uses a dedicated code
+// so /analyze and /api/projects can share the same MaxBytes plumbing without
+// confusing operators about which limit was tripped.
+func errAnalyzeBodyTooLarge(limitBytes int64) *domain.APIError {
+	return &domain.APIError{
+		Code:       codeBodyTooLarge,
+		Message:    "request body exceeds the per-route limit",
+		Details:    map[string]any{"limit_bytes": limitBytes},
+		HTTPStatus: http.StatusRequestEntityTooLarge,
 	}
 }
 
