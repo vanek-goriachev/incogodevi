@@ -34,6 +34,13 @@ func (s *buildState) walkFile(pkg parser.LivePackage, file *ast.File) {
 	ast.Inspect(file, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.FuncDecl:
+			// FuncDecl bodies can be nil for assembly-implemented or
+			// otherwise externally provided functions (e.g. stdlib
+			// stubs pulled in transitively via NeedDeps). Inspecting a
+			// nil node panics, so skip the descent in that case.
+			if node.Body == nil {
+				return false
+			}
 			if id := s.funcNodeID(pkg, node); id != "" {
 				stack.push(id)
 				ast.Inspect(node.Body, func(child ast.Node) bool {
@@ -46,6 +53,9 @@ func (s *buildState) walkFile(pkg parser.LivePackage, file *ast.File) {
 			// Anonymous functions inherit their enclosing function's
 			// identity: the use-def graph treats their body as part of
 			// the outer scope for reachability purposes.
+			if node.Body == nil {
+				return false
+			}
 			ast.Inspect(node.Body, func(child ast.Node) bool {
 				return s.visitExpr(pkg, stack, child)
 			})
