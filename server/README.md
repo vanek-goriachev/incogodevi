@@ -1,8 +1,10 @@
 # server
 
-Go backend for the Go Dependencies Visualizer. At this stage the binary
-exposes only `GET /api/healthz`; analysis endpoints arrive in later tasks
-(see `tasks/README.md`).
+Go backend for the Go Dependencies Visualizer. The binary currently exposes
+project upload (`POST /api/projects`) plus the supporting management endpoints
+(`GET /api/healthz`, `GET /api/projects`, `DELETE /api/projects/{id}`).
+Analysis endpoints (`POST /api/projects/{id}/analyze`, `GET /…/graph`,
+`GET /…/dead-code`) arrive in later tasks (see `tasks/README.md`).
 
 ## Requirements
 
@@ -28,6 +30,54 @@ Expected response:
 
 ```json
 {"status":"ok","version":"0.1.0-dev","uptime_sec":0,"active_projects":0}
+```
+
+## Uploading a project
+
+Upload a Go source archive with `multipart/form-data`. The `archive` field is
+required; `name` is optional and falls back to the module path parsed from
+`go.mod` (api-contract.md §1).
+
+```sh
+curl -sS -X POST http://localhost:8080/api/projects \
+     -F archive=@./my-go-project.zip \
+     -F name="my local go project"
+```
+
+Successful response (HTTP 201):
+
+```json
+{
+  "project_id": "hs3NwQ1jZCEtj8pKmXKg9g",
+  "name": "github.com/acme/example",
+  "uploaded_at": "2026-04-18T12:34:56Z",
+  "size_bytes": 1048576,
+  "file_count": 142,
+  "expires_at": "2026-04-18T13:04:56Z"
+}
+```
+
+Common error envelopes (`{"error": {"code": …, "message": …}}`):
+
+| HTTP | code                     | when                                              |
+| ---- | ------------------------ | ------------------------------------------------- |
+| 400  | `invalid_zip`            | missing `archive` field, broken multipart, bad zip |
+| 400  | `go_mod_missing`         | no `go.mod` in archive root or first sub-folder    |
+| 400  | `zip_slip_detected`      | path traversal entry caught before disk write     |
+| 413  | `archive_too_large`      | request body exceeds 50 MiB pre-unpack            |
+| 422  | `file_count_exceeded`    | more than 10 000 archive entries                  |
+| 422  | `unpacked_size_exceeded` | unpacked size exceeds 500 MiB (zip-bomb guard)    |
+
+Examples:
+
+```sh
+# Missing field
+curl -sS -X POST http://localhost:8080/api/projects -F name="solo"
+# → 400 {"error":{"code":"invalid_zip","message":"missing archive field"}}
+
+# Archive without go.mod
+curl -sS -X POST http://localhost:8080/api/projects -F archive=@./no-mod.zip
+# → 400 {"error":{"code":"go_mod_missing","message":"valid Go module not found"}}
 ```
 
 ## Configuration
