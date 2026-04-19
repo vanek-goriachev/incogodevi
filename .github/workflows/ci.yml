@@ -60,7 +60,7 @@ jobs:
 
       - name: golangci-lint
         if: matrix.os == 'ubuntu-latest' && matrix.go == '1.26'
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.4
           working-directory: server
