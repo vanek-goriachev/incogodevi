@@ -1,0 +1,8 @@
+[
+  {"fqn": "example.com/deadcase/dead.Forgotten", "kind": "struct"},
+  {"fqn": "example.com/deadcase/dead.Forgotten.Name", "kind": "field"},
+  {"fqn": "example.com/deadcase/dead.Forgotten.Whisper", "kind": "method"},
+  {"fqn": "example.com/deadcase/dead.Lonely", "kind": "func"},
+  {"fqn": "example.com/deadcase/dead.Unused", "kind": "var"},
+  {"fqn": "example.com/deadcase/dead.helper", "kind": "func"}
+]
