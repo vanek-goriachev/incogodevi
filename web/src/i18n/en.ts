@@ -54,3 +54,47 @@ export const UPLOAD_UNKNOWN_ERROR = 'upload failed; please try again';
 export function uploadErrorMessage(code: string): string {
   return UPLOAD_ERROR_MESSAGES[code] ?? UPLOAD_UNKNOWN_ERROR;
 }
+
+export const ANALYZING_STRINGS = {
+  heading: 'Analyzing project',
+  noProject: 'No project selected. Return to the landing page to upload one.',
+  backToLanding: 'Back to landing',
+  cancel: 'Cancel analysis',
+  cancelHint: 'Cancel becomes available once the current phase has run for 3 s.',
+  cancelled: 'Analysis was cancelled. Re-run to start over.',
+  failed: 'Analysis failed.',
+  retry: 'Retry analysis',
+  progressLabel: 'Overall progress',
+  warningToast: (code: string, message: string): string =>
+    code !== '' ? `${code}: ${message}` : message,
+  phaseLabels: {
+    loading: 'loading',
+    parsing: 'parsing',
+    building_graph: 'building graph',
+    reachability: 'reachability',
+    exporting: 'exporting',
+    done: 'done',
+    failed: 'failed',
+  },
+} as const;
+
+/**
+ * Maps SSE failure / connection error codes to a single-line user-facing
+ * message shown on the Analyzing fallback screen. Mirrors api-contract §2
+ * pre-stream errors plus the synthetic `network_error` from the client.
+ */
+export const ANALYSIS_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  project_not_found: 'project no longer exists on the server (TTL expired)',
+  analysis_in_progress: 'another analysis for this project is already running',
+  invalid_entry_point: 'one of the configured entry points cannot be resolved',
+  invalid_filters: 'analysis filters contain an unknown node kind',
+  internal: 'the server hit an internal error while analyzing',
+  network_error: 'connection to the server was lost',
+  server_error: 'the server returned an error',
+};
+
+export const ANALYSIS_UNKNOWN_ERROR = 'analysis failed; please try again';
+
+export function analysisErrorMessage(code: string): string {
+  return ANALYSIS_ERROR_MESSAGES[code] ?? ANALYSIS_UNKNOWN_ERROR;
+}
