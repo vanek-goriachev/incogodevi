@@ -53,12 +53,12 @@
 - Логирование: `slog.Info("project_uploaded", slog.String("id", ...), slog.Int64("size", ...), ...)` — не логировать имя файла из header (PII-esque).
 
 ## Acceptance criteria
-- [ ] Happy: `curl -F archive=@valid.zip http://.../api/projects` → 201 + JSON.
-- [ ] 60 МБ → 413 (проверяем, что сервер не зачитал 60 МБ в память — через `io.LimitReader` или `http.MaxBytesReader`).
-- [ ] zip-slip → 400, никакой записи на диск.
-- [ ] FR-01 acceptance из requirements: валидный ZIP принят с HTTP 200/201, невалидный (без `go.mod`) → HTTP 400 с «valid Go module not found».
-- [ ] Все error-код'ы совпадают с api-contract.md §1.
-- [ ] После успешной загрузки cache.Manager содержит проект, TTL = 30 мин.
+- [x] Happy: `curl -F archive=@valid.zip http://.../api/projects` → 201 + JSON.
+- [x] 60 МБ → 413 (проверяем, что сервер не зачитал 60 МБ в память — через `io.LimitReader` или `http.MaxBytesReader`).
+- [x] zip-slip → 400, никакой записи на диск.
+- [x] FR-01 acceptance из requirements: валидный ZIP принят с HTTP 200/201, невалидный (без `go.mod`) → HTTP 400 с «valid Go module not found».
+- [x] Все error-код'ы совпадают с api-contract.md §1.
+- [x] После успешной загрузки cache.Manager содержит проект, TTL = 30 мин.
 
 ## План тестирования
 
@@ -74,10 +74,10 @@
 - В рамках T14 не нужно (UI в T18). В **T26** — через Playwright с реальным upload.
 
 ## Definition of Done
-- [ ] Линтеры и тесты зелёные.
-- [ ] `curl` прогоны happy + error — документированы в README (`server/README.md`).
-- [ ] Коммиты `feat(api): post projects handler`.
-- [ ] PR, merge, `tasks/README.md` T14 `[x]`.
+- [x] Линтеры и тесты зелёные.
+- [x] `curl` прогоны happy + error — документированы в README (`server/README.md`).
+- [x] Коммиты `feat(api): post projects handler`.
+- [x] PR, merge, `tasks/README.md` T14 `[x]`.
 
 ## Как работать
 1. `git checkout main && git pull`

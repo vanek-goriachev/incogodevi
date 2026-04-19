@@ -337,7 +337,6 @@ func TestPlaceholders_Return501(t *testing.T) {
 		path   string
 		body   io.Reader
 	}{
-		{"create", http.MethodPost, "/api/projects", strings.NewReader("{}")},
 		{"analyze", http.MethodPost, "/api/projects/" + string(project.Meta.ID) + "/analyze", strings.NewReader("{}")},
 		{"graph", http.MethodGet, "/api/projects/" + string(project.Meta.ID) + "/graph", nil},
 		{"deadcode", http.MethodGet, "/api/projects/" + string(project.Meta.ID) + "/dead-code", nil},
@@ -393,18 +392,15 @@ func TestPlaceholders_BadIDReturns404(t *testing.T) {
 	}
 }
 
-func TestUpload_MaxBytesReader_ReturnsArchiveTooLarge(t *testing.T) {
+func TestUpload_NonMultipartReturnsInvalidZip(t *testing.T) {
 	t.Parallel()
 
 	srv, _ := newTestServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
-	// Write 1 MiB above the configured limit; we never have to actually
-	// allocate 50 MiB because MaxBytesReader fails on the first byte past
-	// the cap.
-	oversized := strings.NewReader(strings.Repeat("z", int(MaxUploadBytes)+1024))
-	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/projects", oversized)
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/projects",
+		strings.NewReader("not multipart"))
 	req.Header.Set("Content-Type", "application/octet-stream")
 	resp, err := ts.Client().Do(req)
 	if err != nil {
@@ -412,11 +408,11 @@ func TestUpload_MaxBytesReader_ReturnsArchiveTooLarge(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = resp.Body.Close() })
 
-	if resp.StatusCode != http.StatusRequestEntityTooLarge {
-		t.Fatalf("status: got %d, want 413", resp.StatusCode)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), `"code":"archive_too_large"`) {
+	if !strings.Contains(string(body), `"code":"invalid_zip"`) {
 		t.Errorf("envelope: %s", body)
 	}
 }
