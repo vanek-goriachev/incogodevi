@@ -1,39 +1,79 @@
 /*
  * Design tokens — single source of truth for colors and typography.
  * Mirrors `docs/design.md` §5.5 (palettes) and §5.6 (typography).
- * Dark theme is auto-selected via `prefers-color-scheme`; explicit override
- * is layered on top in later tasks (T17 app shell).
+ *
+ * Theme strategy: `<html data-theme="light|dark">` is set by ThemeProvider
+ * (T17). The `[data-theme="dark"]` block overrides the light tokens. The
+ * `prefers-color-scheme` media query is left as a safety net for the
+ * pre-hydration paint (server doesn't yet know the user's choice).
  */
-:root {
+
+:root,
+:root[data-theme='light'] {
   --font-ui: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace;
 
   --color-bg: #ffffff;
+  --color-bg-elevated: #f8fafc;
   --color-fg: #0f172a;
+  --color-fg-muted: #475569;
+  --color-border: #cbd5f5;
+  --color-accent: #3b82f6;
+  --color-accent-fg: #ffffff;
+  --color-info: #2563eb;
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-danger: #b91c1c;
+  --color-toast-bg: #ffffff;
+  --color-toast-fg: #0f172a;
+  --color-toast-border: #cbd5f5;
+
+  --shadow-elevated: 0 6px 18px rgba(15, 23, 42, 0.12);
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #0f172a;
+  --color-bg-elevated: #1e293b;
+  --color-fg: #e2e8f0;
+  --color-fg-muted: #94a3b8;
+  --color-border: #334155;
+  --color-accent: #60a5fa;
+  --color-accent-fg: #0f172a;
+  --color-info: #60a5fa;
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+  --color-toast-bg: #1e293b;
+  --color-toast-fg: #e2e8f0;
+  --color-toast-border: #334155;
+
+  --shadow-elevated: 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --color-bg: #0f172a;
+    --color-bg-elevated: #1e293b;
     --color-fg: #e2e8f0;
+    --color-fg-muted: #94a3b8;
+    --color-border: #334155;
+    --color-accent: #60a5fa;
+    --color-accent-fg: #0f172a;
+    --color-info: #60a5fa;
+    --color-success: #4ade80;
+    --color-warning: #fbbf24;
+    --color-danger: #f87171;
+    --color-toast-bg: #1e293b;
+    --color-toast-fg: #e2e8f0;
+    --color-toast-border: #334155;
   }
 }
 
-.app-shell {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 32px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.app-shell h1 {
-  font-size: 24px;
-}
-
-.app-shell output {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  min-height: 1.5em;
+/* Disable transitions when the user opts out of motion (design.md §6). */
+:root[data-reduced-motion] * {
+  transition: none !important;
+  animation-duration: 0.001ms !important;
 }

@@ -71,15 +71,15 @@
 - Bundle size target: shell < 150 KB gzip (до Cytoscape).
 
 ## Acceptance criteria
-- [ ] Router переключает state; `?route=main` deep-link не поддерживается для MVP.
-- [ ] ThemeProvider применяет `data-theme="dark"` при `prefers-color-scheme: dark`, сохраняет выбор пользователя.
-- [ ] ErrorBoundary ловит ошибку в дочернем компоненте (unit-тест) и показывает fallback UI, не роняя всё приложение (NFR-09).
-- [ ] Toasts появляются и автодисмиссятся через 5 с; `role="status"` для screen reader.
-- [ ] ApiClient.uploadProject: 413 → `ApiError{code:"archive_too_large"}`.
-- [ ] SSE-парсер: тест с несколькими chunks и частичными event-блоками корректно собирает событие.
-- [ ] `useLocalStorage` сохраняет и восстанавливает.
-- [ ] `npm run build` ≤ 200 KB gzip.
-- [ ] `npm run lint`, `typecheck`, `test` — зелёные.
+- [x] Router переключает state; `?route=main` deep-link не поддерживается для MVP.
+- [x] ThemeProvider применяет `data-theme="dark"` при `prefers-color-scheme: dark`, сохраняет выбор пользователя.
+- [x] ErrorBoundary ловит ошибку в дочернем компоненте (unit-тест) и показывает fallback UI, не роняя всё приложение (NFR-09).
+- [x] Toasts появляются и автодисмиссятся через 5 с; `role="status"` для screen reader.
+- [x] ApiClient.uploadProject: 413 → `ApiError{code:"archive_too_large"}`.
+- [x] SSE-парсер: тест с несколькими chunks и частичными event-блоками корректно собирает событие.
+- [x] `useLocalStorage` сохраняет и восстанавливает.
+- [x] `npm run build` ≤ 200 KB gzip.
+- [x] `npm run lint`, `typecheck`, `test` — зелёные.
 
 ## План тестирования
 
@@ -96,10 +96,10 @@
 Поведение в нормальном состоянии — пустой «App ready» экран с theme применённой. В ErrorBoundary — экран из design.md §3.4. Loading/Empty — per design.md §7 матрица. Пока только shell — полный UI в T18+.
 
 ## Definition of Done
-- [ ] `npm run typecheck && npm run lint && npm run test && npm run build` — зелёные.
-- [ ] `web/README.md` описывает архитектуру src (routing, theme, api, storage).
-- [ ] Коммиты `feat(web): app shell`.
-- [ ] PR, merge, `tasks/README.md` T17 `[x]`.
+- [x] `npm run typecheck && npm run lint && npm run test && npm run build` — зелёные.
+- [x] `web/README.md` описывает архитектуру src (routing, theme, api, storage).
+- [x] Коммиты `feat(web): app shell`.
+- [x] PR, merge, `tasks/README.md` T17 `[x]`.
 
 ## Как работать
 1. `git checkout main && git pull`
