@@ -15,7 +15,7 @@ Go 1.26 (stdlib `net/http.ServeMux` method-routing + `x/tools/go/packages` v0.44
 | T03 | CI GitHub Actions | T01, T02 | S | infra | [x] |
 | T04 | Доменные типы | T01 | M | backend/domain | [x] |
 | T05 | DiskCacheManager | T01, T04 | M | backend/cache | [x] |
-| T06 | ProjectLoader (ZIP) | T01, T04, T05 | M | backend/loader | [ ] |
+| T06 | ProjectLoader (ZIP) | T01, T04, T05 | M | backend/loader | [x] |
 | T07 | Parser + parsed.gob | T01, T04, T05, T06 | L | backend/parser | [ ] |
 | T08 | GraphBuilder | T04, T07 | L | backend/graph | [ ] |
 | T09 | InterfaceResolver | T04, T07, T08 | M | backend/graph | [ ] |
@@ -132,7 +132,7 @@ graph TD
 - [x] T03 CI GitHub Actions
 - [x] T04 Доменные типы
 - [x] T05 DiskCacheManager
-- [ ] T06 ProjectLoader (ZIP)
+- [x] T06 ProjectLoader (ZIP)
 - [ ] T07 Parser + parsed.gob
 - [ ] T08 GraphBuilder
 - [ ] T09 InterfaceResolver
