@@ -187,6 +187,7 @@ Accept: application/json
 |---|---|---|
 | `aggregate` | `auto\|package\|none` | `auto` (default) — если nodes > 1000, вернуть package-aggregated; `package` — всегда aggregated; `none` — всегда детальный. FR-18. |
 | `include_dead` | `true\|false` | default `true`. Если `false` — отфильтровать `Reachable==false` на сервере. |
+| `scope` | `<package/path>` | Если указан — вернуть только узлы этого пакета и рёбра, где оба конца принадлежат пакету; `aggregation` в ответе всегда `none`. Используется фронтендом для раскрытия одного пакета в aggregated-режиме (double-click на package-узле). Взаимоисключает `aggregate=package`. |
 
 ### Response 200 OK
 
@@ -217,6 +218,7 @@ Accept: application/json
 
 | HTTP | code | когда |
 |---|---|---|
+| 400 | `invalid_scope` | `scope=<pkg>` не совпадает ни с одним пакетом в графе (в `details.packages` — список валидных) |
 | 404 | `project_not_found` | id не найден / TTL |
 | 404 | `no_graph_yet` | проект загружен, но `/analyze` ни разу не вызывался |
 | 503 | `stale_cache` | disk cache повреждён, запустить `/analyze` заново |
@@ -358,7 +360,6 @@ GET /api/healthz HTTP/1.1
 | `POST` | `/api/projects/{id}/analyze` | запустить анализ, получить SSE stream | FR-04..10, FR-19, NFR-01, NFR-02, NFR-08 |
 | `GET` | `/api/projects/{id}/graph` | последний граф | FR-08, FR-11, FR-18 |
 | `GET` | `/api/projects/{id}/dead-code` | отчёт (TXT/JSON) | FR-20, FR-23, FR-24 |
-| `GET` | `/api/projects/{id}/expand?package=…` | раскрыть пакет в агрегированном режиме (nice-to-have) | FR-18 |
 | `DELETE` | `/api/projects/{id}` | удалить проект | — |
 | `GET` | `/api/projects` | список активных (debug) | — |
 | `GET` | `/api/healthz` | health | — |
