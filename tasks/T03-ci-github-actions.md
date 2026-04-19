@@ -54,12 +54,12 @@ Jobs:
 - Secrets не нужны (нет push в registry).
 
 ## Acceptance criteria
-- [ ] PR в `main` запускает все три job; все зелёные на чистом main.
-- [ ] Коммит с нарушением golangci-lint ломает backend-job.
-- [ ] Коммит с TS-ошибкой ломает frontend-job.
-- [ ] `status` job отмечен как required в branch protection (настройка в Git-репо, документируется в README).
-- [ ] Матрица Go `{1.25, 1.26}` — оба прогоняются.
-- [ ] Время CI ≤ 5 минут на чистом PR (кэши работают).
+- [x] PR в `main` запускает все три job; все зелёные на чистом main.
+- [x] Коммит с нарушением golangci-lint ломает backend-job.
+- [x] Коммит с TS-ошибкой ломает frontend-job.
+- [x] `status` job отмечен как required в branch protection (настройка в Git-репо, документируется в README).
+- [x] Матрица Go `{1.25, 1.26}` — оба прогоняются.
+- [x] Время CI ≤ 5 минут на чистом PR (кэши работают).
 
 ## План тестирования
 ### Unit-тесты
@@ -75,12 +75,12 @@ Jobs:
 - Скриншот успешного CI run (можно вложить позже при merge PR).
 
 ## Definition of Done
-- [ ] Workflows написаны и валидны (`actionlint` или ручной `gh workflow view`).
-- [ ] На тестовом PR все jobs зелёные.
-- [ ] `README.md` в корне обновлён: бейдж статуса CI.
-- [ ] Dependabot config валиден.
-- [ ] Коммиты в Conventional Commits (`ci: add …`).
-- [ ] PR создан, `tasks/README.md` обновлён: T03 `[x]`.
+- [x] Workflows написаны и валидны (`actionlint` или ручной `gh workflow view`).
+- [x] На тестовом PR все jobs зелёные.
+- [x] `README.md` в корне обновлён: бейдж статуса CI.
+- [x] Dependabot config валиден.
+- [x] Коммиты в Conventional Commits (`ci: add …`).
+- [x] PR создан, `tasks/README.md` обновлён: T03 `[x]`.
 
 ## Как работать
 1. `git checkout main && git pull`
