@@ -17,6 +17,7 @@ coverage.html
 node_modules/
 /web/dist/
 /web/build/
+/web/coverage/
 .cache/
 
 # Python (для excalidraw render и скриптов)
