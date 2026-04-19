@@ -10,6 +10,7 @@ import (
 
 	"github.com/vanek-goriachev/incogodevi/server/internal/cache"
 	"github.com/vanek-goriachev/incogodevi/server/internal/domain"
+	"github.com/vanek-goriachev/incogodevi/server/internal/loader"
 )
 
 // MaxUploadBytes is the byte limit applied to POST /api/projects per
@@ -44,6 +45,12 @@ type Config struct {
 	// headers. Same-origin requests are always allowed; everything else
 	// must appear here verbatim or it is rejected with 403.
 	TrustedOrigins []string
+
+	// Loader handles ZIP unpacking on POST /api/projects. When nil, NewServer
+	// builds a default loader.New on top of Cache with the package defaults
+	// (matches NFR-04 / NFR-13 / NFR-14). Tests inject a custom loader to
+	// exercise edge cases without round-tripping a real ZIP.
+	Loader *loader.Loader
 }
 
 // Server is the HTTP entry point of the backend. It owns the configured mux
@@ -51,6 +58,7 @@ type Config struct {
 // Handler().
 type Server struct {
 	cache          cache.Manager
+	loader         *loader.Loader
 	logger         *slog.Logger
 	version        string
 	startedAt      time.Time
@@ -83,8 +91,14 @@ func NewServer(cfg Config) (*Server, error) {
 		startedAt = time.Now()
 	}
 
+	uploadLoader := cfg.Loader
+	if uploadLoader == nil {
+		uploadLoader = loaderFromCache(cfg.Cache, logger)
+	}
+
 	srv := &Server{
 		cache:          cfg.Cache,
+		loader:         uploadLoader,
 		logger:         logger,
 		version:        version,
 		startedAt:      startedAt,
@@ -117,14 +131,14 @@ func (s *Server) Handler() http.Handler { return s.handler }
 func (s *Server) Mux() *http.ServeMux { return s.mux }
 
 // registerRoutes wires up every endpoint defined in docs/api-contract.md.
-// Real handlers for upload/analyze/graph/dead-code are placeholders here and
-// filled in by tasks T13–T16.
+// Upload (POST /api/projects) is the real T14 implementation; analyze, graph
+// and dead-code are still placeholders filled in by tasks T15–T16.
 func (s *Server) registerRoutes(staticFS fs.FS) {
 	s.mux.HandleFunc("GET /api/healthz", s.handleHealthz)
 
 	s.mux.HandleFunc("GET /api/projects", s.handleListProjects)
 	s.mux.Handle("POST /api/projects", MaxBytes(MaxUploadBytes,
-		http.HandlerFunc(s.handleCreateProjectPlaceholder)))
+		http.HandlerFunc(s.handleCreateProject)))
 
 	s.mux.HandleFunc("DELETE /api/projects/{id}", s.handleDeleteProject)
 
@@ -232,27 +246,6 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// handleCreateProjectPlaceholder is the 501 stub replaced in T14. We still
-// drain a bit of the body to make sure the MaxBytesReader limit is exercised
-// for AC verification ("POST with 60 MiB → 413").
-func (s *Server) handleCreateProjectPlaceholder(w http.ResponseWriter, r *http.Request) {
-	if r.Body != nil {
-		buf := make([]byte, 4096)
-		for {
-			_, err := r.Body.Read(buf)
-			if err == nil {
-				continue
-			}
-			if IsMaxBytesError(err) {
-				writeAPIError(w, r, errArchiveTooLarge(MaxBytesLimit(err)))
-				return
-			}
-			break
-		}
-	}
-	writeAPIError(w, r, errNotImplemented("POST /api/projects", "T14"))
 }
 
 // handleAnalyzePlaceholder is the 501 stub replaced in T15.

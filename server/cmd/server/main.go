@@ -1,8 +1,9 @@
 // Command server starts the Go Dependencies Visualizer HTTP backend.
 //
 // The binary wires the disk cache manager and the api.Server into a single
-// http.Server with graceful shutdown. Real analysis endpoints are still
-// placeholders here — they are filled in by tasks T13–T16.
+// http.Server with graceful shutdown. POST /api/projects performs a real
+// upload + ZIP unpack via the loader package; the analyze / graph / dead-code
+// endpoints remain placeholders filled in by tasks T15–T16.
 package main
 
 import (

@@ -10,13 +10,18 @@ import (
 // Stable error codes used across the HTTP boundary. Mirrors
 // docs/api-contract.md.
 const (
-	codeProjectNotFound    = "project_not_found"
-	codeNotImplemented     = "not_implemented"
-	codeInternal           = "internal"
-	codeArchiveTooLarge    = "archive_too_large"
-	codeForbiddenOrigin    = "forbidden_origin"
-	codeMethodNotAllowed   = "method_not_allowed"
-	codeAnalysisInProgress = "analysis_in_progress"
+	codeProjectNotFound      = "project_not_found"
+	codeNotImplemented       = "not_implemented"
+	codeInternal             = "internal"
+	codeArchiveTooLarge      = "archive_too_large"
+	codeForbiddenOrigin      = "forbidden_origin"
+	codeMethodNotAllowed     = "method_not_allowed"
+	codeAnalysisInProgress   = "analysis_in_progress"
+	codeInvalidZip           = "invalid_zip"
+	codeZipSlipDetected      = "zip_slip_detected"
+	codeGoModMissing         = "go_mod_missing"
+	codeFileCountExceeded    = "file_count_exceeded"
+	codeUnpackedSizeExceeded = "unpacked_size_exceeded"
 )
 
 // errProjectNotFound builds the canonical APIError for an unknown / expired
@@ -83,6 +88,60 @@ func errMethodNotAllowed(method string) *domain.APIError {
 		Message:    "method not allowed",
 		Details:    map[string]any{"method": method},
 		HTTPStatus: http.StatusMethodNotAllowed,
+	}
+}
+
+// errInvalidZip covers every "the body is not a usable archive" condition that
+// the upload handler can hit: missing form field, broken multipart, broken
+// zip header, missing Content-Length, etc. The message accepts a free-form
+// reason so log scanners can distinguish them while clients still see a single
+// stable code.
+func errInvalidZip(reason string) *domain.APIError {
+	return &domain.APIError{
+		Code:       codeInvalidZip,
+		Message:    reason,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// errZipSlipDetected reports a path-traversal entry in the uploaded archive.
+// The offending entry name is intentionally NOT echoed to avoid acting as a
+// reflected XSS vector when the response is displayed in a browser.
+func errZipSlipDetected() *domain.APIError {
+	return &domain.APIError{
+		Code:       codeZipSlipDetected,
+		Message:    "archive contains path-traversal entries",
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// errGoModMissing matches FR-01 acceptance: "valid Go module not found".
+func errGoModMissing() *domain.APIError {
+	return &domain.APIError{
+		Code:       codeGoModMissing,
+		Message:    "valid Go module not found",
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// errFileCountExceeded surfaces the loader-level file budget overrun
+// (NFR-04 / NFR-14) as the documented 422 envelope.
+func errFileCountExceeded(limit int) *domain.APIError {
+	return &domain.APIError{
+		Code:       codeFileCountExceeded,
+		Message:    "archive exceeds the file-count limit",
+		Details:    map[string]any{"limit": limit},
+		HTTPStatus: http.StatusUnprocessableEntity,
+	}
+}
+
+// errUnpackedSizeExceeded surfaces the cumulative-size guard.
+func errUnpackedSizeExceeded(limitBytes int64) *domain.APIError {
+	return &domain.APIError{
+		Code:       codeUnpackedSizeExceeded,
+		Message:    "archive exceeds the unpacked-size limit",
+		Details:    map[string]any{"limit_bytes": limitBytes},
+		HTTPStatus: http.StatusUnprocessableEntity,
 	}
 }
 
