@@ -22,9 +22,11 @@
   - `GET /api/projects/{id}/graph`:
     - `cache.ReadGraph(id)` → `domain.Graph` или `ErrProjectNotFound` (404) или `ErrNoGraphYet` (404 `no_graph_yet`) или `ErrStaleCache` (503).
     - Query params: `aggregate` default `auto`; `include_dead` default `true`; **`scope=<package/path>`** (optional, для раскрытия одного пакета в aggregated режиме — см. T24).
-    - Если `aggregate=package` ИЛИ (`aggregate=auto` AND `len(Nodes) > 1000`) → `reach.Aggregate(g)`.
-    - Если `scope` указан → отфильтровать `Nodes` до узлов с `Node.Package == scope` (плюс сам package-node, если остаётся) + рёбра, где **оба** конца из этого пакета; `aggregation == "none"` в ответе. При неизвестном `scope` → 400 `invalid_scope` со списком валидных в `details.packages`.
-    - Если `include_dead=false` → фильтровать `Reachable==true` на сервере (рёбра, оба конца должны быть live).
+    - **Порядок обработки** (важно):
+      1. Если `scope` указан — валидировать, что такой `Node.Package` существует в графе. Нет → 400 `invalid_scope` со списком валидных в `details.packages`. Да → отфильтровать `Nodes` до узлов с `Node.Package == scope` (плюс сам package-node, если он относится к этому пакету) + рёбра, где **оба** конца из этого пакета; `aggregation == "none"` в ответе. **`aggregate` параметр игнорируется** (scope и aggregate взаимоисключающие — scope всегда выигрывает).
+      2. Иначе — если `aggregate=package` ИЛИ (`aggregate=auto` AND `len(Nodes) > 1000`) → `reach.Aggregate(g)`; `aggregation == "package"` в ответе.
+      3. Иначе — вернуть граф как есть; `aggregation == "none"`.
+    - После выбора view: если `include_dead=false` → фильтровать `Reachable==true` на сервере (рёбра, оба конца должны быть live).
     - Response: JSON по схеме api-contract §3 (project_id, generated_at, aggregation, stats, nodes, edges, warnings).
 - `server/internal/api/deadcode_handler.go`:
   - `GET /api/projects/{id}/dead-code`:
@@ -56,6 +58,7 @@
 - [ ] `GET /graph` happy → 200 + валидный JSON, `stats.dead_count` совпадает с `len(dead)`.
 - [ ] `GET /graph?aggregate=package` → `aggregation == "package"`, `nodes` только package-уровня.
 - [ ] `GET /graph?scope=foo/bar` → только узлы этого пакета; `aggregation == "none"`; неизвестный `scope` → 400 `invalid_scope`.
+- [ ] `GET /graph?scope=foo/bar&aggregate=package` → `scope` выигрывает; `aggregation == "none"`; `aggregate` игнорируется.
 - [ ] `GET /graph?include_dead=false` → нет `Reachable==false` узлов и рёбер, где хоть один конец dead.
 - [ ] `GET /dead-code?format=txt` → `text/plain; charset=utf-8`, формат совпадает с FR-20.
 - [ ] `GET /dead-code?format=txt&download=1` → `Content-Disposition: attachment; filename="*-dead-code.txt"`.

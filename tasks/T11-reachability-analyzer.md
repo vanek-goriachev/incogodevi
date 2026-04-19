@@ -31,7 +31,7 @@
       - `references` — source→target (использование var/const)
       - `imports` — НЕ используем для reachability (пакет импортирует пакет ≠ используются все его функции)
     - BFS от entryIDs; `reached := set[NodeID]`.
-    - `for _, n := range g.Nodes { n.Reachable = reached[n.ID] }`.
+    - `for i := range g.Nodes { g.Nodes[i].Reachable = reached[g.Nodes[i].ID] }` (по индексу — `for _, n := range` даёт копию, мутация теряется).
     - `g.Stats.DeadCount = total - |reached|`.
   - `func (a *Analyzer) DeadCode(g *domain.Graph) *domain.DeadCodeReport`:
     - Собрать все `Node.Reachable == false` (кроме `NodeKind.package` — пакеты не помечаем dead, их dead-ность определяется по всем детям).

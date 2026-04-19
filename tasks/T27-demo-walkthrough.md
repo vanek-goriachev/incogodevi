@@ -49,7 +49,7 @@
 - Video-запись демо — optional, решает исполнитель.
 
 ## Технические детали
-- `demo/fixtures/*.zip` — pinned upstream repositories на конкретные git SHA. README объясняет как пересобрать (`git clone + zip`).
+- `demo/fixtures/*.zip` — pinned upstream repositories на конкретные git SHA. **Переиспользовать инфраструктуру T26:** `scripts/build-fixtures.sh` + `e2e/fixtures/manifest.json` уже умеют собирать zip из pinned SHA. Для демо — либо расширить тот же `manifest.json` новыми записями (`demo-small`, `demo-medium`), либо симлинками переиспользовать `e2e/fixtures/*.zip`. Не дублировать скрипт.
 - Performance замеры — через `e2e/specs/nfr-01-bench.spec.ts` из T26 на reference-железе.
 - Если `go/packages` в offline-режиме не резолвит dependencies — пересобрать ZIP с `go mod vendor`.
 
