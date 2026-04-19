@@ -22,7 +22,7 @@ Go 1.26 (stdlib `net/http.ServeMux` method-routing + `x/tools/go/packages` v0.44
 | T10 | EntryPointsResolver | T04, T07, T08 | M | backend/entry | [x] |
 | T11 | ReachabilityAnalyzer | T04, T08, T09, T10 | M | backend/reach | [x] |
 | T12 | HTTP скелет + middleware | T01, T04, T05 | M | backend/api | [x] |
-| T13 | AnalysisOrchestrator + SSE | T04, T05, T07, T11, T12 | M | backend/api | [ ] |
+| T13 | AnalysisOrchestrator + SSE | T04, T05, T07, T11, T12 | M | backend/api | [x] |
 | T14 | POST /api/projects | T06, T12 | S | backend/api | [ ] |
 | T15 | POST /analyze (SSE) | T10, T11, T13 | L | backend/api | [ ] |
 | T16 | GET /graph + /dead-code | T11, T12, T15 | M | backend/api | [ ] |
@@ -139,7 +139,7 @@ graph TD
 - [x] T10 EntryPointsResolver
 - [x] T11 ReachabilityAnalyzer
 - [x] T12 HTTP скелет + middleware
-- [ ] T13 AnalysisOrchestrator + SSE
+- [x] T13 AnalysisOrchestrator + SSE
 - [ ] T14 POST /api/projects
 - [ ] T15 POST /analyze (SSE)
 - [ ] T16 GET /graph + /dead-code
