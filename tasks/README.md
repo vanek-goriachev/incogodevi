@@ -10,7 +10,7 @@ Go 1.26 (stdlib `net/http.ServeMux` method-routing + `x/tools/go/packages` v0.44
 
 | ID | Название | Зависит от | Size | Component | Status |
 |----|----------|-----------|------|-----------|--------|
-| T01 | Scaffold backend | — | S | infra | [ ] |
+| T01 | Scaffold backend | — | S | infra | [x] |
 | T02 | Scaffold frontend | — | S | infra | [ ] |
 | T03 | CI GitHub Actions | T01, T02 | S | infra | [ ] |
 | T04 | Доменные типы | T01 | M | backend/domain | [ ] |
@@ -127,7 +127,7 @@ graph TD
 5. После merge — переход к следующей задаче из топологического порядка.
 
 ## Статус
-- [ ] T01 Scaffold backend
+- [x] T01 Scaffold backend
 - [ ] T02 Scaffold frontend
 - [ ] T03 CI GitHub Actions
 - [ ] T04 Доменные типы
