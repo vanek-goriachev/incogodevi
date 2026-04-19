@@ -158,6 +158,27 @@ func TestWriteAndReadGraphRoundTrip(t *testing.T) {
 	}
 }
 
+func TestGraphMTime(t *testing.T) {
+	mgr := newTestManager(t)
+	project, err := mgr.NewProject("example", 0, 0)
+	if err != nil {
+		t.Fatalf("NewProject: %v", err)
+	}
+	if _, err := mgr.GraphMTime(project.Meta.ID); !errors.Is(err, domain.ErrNoGraphYet) {
+		t.Fatalf("GraphMTime missing = %v, want ErrNoGraphYet", err)
+	}
+	if err := mgr.WriteGraph(project.Meta.ID, sampleGraph()); err != nil {
+		t.Fatalf("WriteGraph: %v", err)
+	}
+	got, err := mgr.GraphMTime(project.Meta.ID)
+	if err != nil {
+		t.Fatalf("GraphMTime: %v", err)
+	}
+	if got.IsZero() || time.Since(got) > time.Minute {
+		t.Errorf("GraphMTime returned %v, expected a recent timestamp", got)
+	}
+}
+
 func TestWriteAndReadDeadCodeRoundTrip(t *testing.T) {
 	mgr := newTestManager(t)
 	project, err := mgr.NewProject("example", 0, 0)
@@ -213,17 +234,17 @@ func TestParsedBlobRoundTrip(t *testing.T) {
 	}
 }
 
-func TestReadGraphReturnsStaleCacheWhenMissing(t *testing.T) {
+func TestReadGraphReturnsNoGraphYetWhenMissing(t *testing.T) {
 	mgr := newTestManager(t)
 	project, err := mgr.NewProject("example", 0, 0)
 	if err != nil {
 		t.Fatalf("NewProject: %v", err)
 	}
-	if _, err := mgr.ReadGraph(project.Meta.ID); !errors.Is(err, cache.ErrStaleCache) {
-		t.Fatalf("missing graph returned %v, want ErrStaleCache", err)
+	if _, err := mgr.ReadGraph(project.Meta.ID); !errors.Is(err, domain.ErrNoGraphYet) {
+		t.Fatalf("missing graph returned %v, want ErrNoGraphYet", err)
 	}
-	if _, err := mgr.ReadDeadCode(project.Meta.ID); !errors.Is(err, cache.ErrStaleCache) {
-		t.Fatalf("missing dead-code returned %v, want ErrStaleCache", err)
+	if _, err := mgr.ReadDeadCode(project.Meta.ID); !errors.Is(err, domain.ErrNoGraphYet) {
+		t.Fatalf("missing dead-code returned %v, want ErrNoGraphYet", err)
 	}
 	if _, err := mgr.ReadParsedBlob(project.Meta.ID); !errors.Is(err, cache.ErrStaleCache) {
 		t.Fatalf("missing parsed blob returned %v, want ErrStaleCache", err)

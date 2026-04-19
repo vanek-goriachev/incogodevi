@@ -88,6 +88,7 @@ type Manager interface {
 	WriteMeta(id domain.ProjectID, meta *ProjectMeta) error
 	ReadGraph(id domain.ProjectID) (*domain.Graph, error)
 	WriteGraph(id domain.ProjectID, g *domain.Graph) error
+	GraphMTime(id domain.ProjectID) (time.Time, error)
 	ReadDeadCode(id domain.ProjectID) (*domain.DeadCodeReport, error)
 	WriteDeadCode(id domain.ProjectID, r *domain.DeadCodeReport) error
 	ReadParsedBlob(id domain.ProjectID) (io.ReadCloser, error)
@@ -401,7 +402,10 @@ func (m *manager) WriteMeta(id domain.ProjectID, meta *ProjectMeta) error {
 
 // ReadGraph deserialises graph.json. It returns:
 //   - ErrProjectNotFound if id is not registered;
-//   - ErrStaleCache if the file is missing or corrupt;
+//   - domain.ErrNoGraphYet if the file does not exist (project uploaded but
+//     never analysed);
+//   - ErrStaleCache if the file exists but is structurally invalid (decode
+//     failure or empty envelope);
 //   - ErrSchemaMismatch if the persisted SchemaVersion does not match
 //     domain.CurrentSchemaVersion.
 func (m *manager) ReadGraph(id domain.ProjectID) (*domain.Graph, error) {
@@ -413,7 +417,7 @@ func (m *manager) ReadGraph(id domain.ProjectID) (*domain.Graph, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("cache: graph %q: %w", path, ErrStaleCache)
+			return nil, fmt.Errorf("cache: graph %q: %w", path, domain.ErrNoGraphYet)
 		}
 		return nil, fmt.Errorf("cache: read graph %q: %w", path, err)
 	}
@@ -452,7 +456,31 @@ func (m *manager) WriteGraph(id domain.ProjectID, g *domain.Graph) error {
 	})
 }
 
-// ReadDeadCode mirrors ReadGraph for dead-code.json.
+// GraphMTime reports the modification time of graph.json. The HTTP layer uses
+// it to populate the generated_at field of the /graph response without a
+// second round-trip through ReadGraph. Returns:
+//   - ErrProjectNotFound if id is not registered;
+//   - domain.ErrNoGraphYet if graph.json has not been written yet;
+//   - any other os.Stat error otherwise.
+func (m *manager) GraphMTime(id domain.ProjectID) (time.Time, error) {
+	dir, err := m.cacheDir(id)
+	if err != nil {
+		return time.Time{}, err
+	}
+	path := filepath.Join(dir, graphFileName)
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return time.Time{}, fmt.Errorf("cache: graph %q: %w", path, domain.ErrNoGraphYet)
+		}
+		return time.Time{}, fmt.Errorf("cache: stat graph %q: %w", path, err)
+	}
+	return info.ModTime().UTC(), nil
+}
+
+// ReadDeadCode mirrors ReadGraph for dead-code.json. Missing files map to
+// domain.ErrNoGraphYet, decode and schema failures to ErrStaleCache /
+// ErrSchemaMismatch respectively.
 func (m *manager) ReadDeadCode(id domain.ProjectID) (*domain.DeadCodeReport, error) {
 	dir, err := m.cacheDir(id)
 	if err != nil {
@@ -462,7 +490,7 @@ func (m *manager) ReadDeadCode(id domain.ProjectID) (*domain.DeadCodeReport, err
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("cache: dead-code %q: %w", path, ErrStaleCache)
+			return nil, fmt.Errorf("cache: dead-code %q: %w", path, domain.ErrNoGraphYet)
 		}
 		return nil, fmt.Errorf("cache: read dead-code %q: %w", path, err)
 	}
