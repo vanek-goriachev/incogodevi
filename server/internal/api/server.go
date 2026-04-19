@@ -51,6 +51,13 @@ type Config struct {
 	// (matches NFR-04 / NFR-13 / NFR-14). Tests inject a custom loader to
 	// exercise edge cases without round-tripping a real ZIP.
 	Loader *loader.Loader
+
+	// Analyzer drives POST /api/projects/{id}/analyze (T15). When nil the
+	// /analyze route returns 503 service_unavailable so operators can spot
+	// misconfigured deployments instead of getting opaque panics. Production
+	// wires an *orchestrator.Orchestrator here; tests inject fakes that drive
+	// the SSE stream deterministically.
+	Analyzer Analyzer
 }
 
 // Server is the HTTP entry point of the backend. It owns the configured mux
@@ -59,6 +66,7 @@ type Config struct {
 type Server struct {
 	cache          cache.Manager
 	loader         *loader.Loader
+	analyzer       Analyzer
 	logger         *slog.Logger
 	version        string
 	startedAt      time.Time
@@ -99,6 +107,7 @@ func NewServer(cfg Config) (*Server, error) {
 	srv := &Server{
 		cache:          cfg.Cache,
 		loader:         uploadLoader,
+		analyzer:       cfg.Analyzer,
 		logger:         logger,
 		version:        version,
 		startedAt:      startedAt,
@@ -142,7 +151,7 @@ func (s *Server) registerRoutes(staticFS fs.FS) {
 
 	s.mux.HandleFunc("DELETE /api/projects/{id}", s.handleDeleteProject)
 
-	s.mux.HandleFunc("POST /api/projects/{id}/analyze", s.handleAnalyzePlaceholder)
+	s.mux.HandleFunc("POST /api/projects/{id}/analyze", s.handleAnalyze)
 	s.mux.HandleFunc("GET /api/projects/{id}/graph", s.handleGraphPlaceholder)
 	s.mux.HandleFunc("GET /api/projects/{id}/dead-code", s.handleDeadCodePlaceholder)
 
@@ -246,15 +255,6 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// handleAnalyzePlaceholder is the 501 stub replaced in T15.
-func (s *Server) handleAnalyzePlaceholder(w http.ResponseWriter, r *http.Request) {
-	if _, err := asProjectIDOr404(r.PathValue("id")); err != nil {
-		writeAPIError(w, r, err)
-		return
-	}
-	writeAPIError(w, r, errNotImplemented("POST /api/projects/{id}/analyze", "T15"))
 }
 
 // handleGraphPlaceholder is the 501 stub replaced in T16.

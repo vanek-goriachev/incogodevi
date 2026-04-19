@@ -138,11 +138,70 @@ func (o *Orchestrator) Run(
 	if stream == nil {
 		return errors.New("orchestrator: nil SSEStreamer")
 	}
-	mu, fresh := o.acquire(id)
-	if !fresh {
+	release, ok := o.Reserve(id)
+	if !ok {
 		return ErrAnalysisInProgress
 	}
-	defer mu.Unlock()
+	defer release()
+	return o.runReserved(ctx, id, spec, filters, stream)
+}
+
+// RunReserved runs the pipeline assuming the caller has already obtained the
+// per-project single-flight reservation through Reserve. It is intended for
+// the HTTP handler (T15), which needs to surface ErrAnalysisInProgress as a
+// JSON 409 *before* the SSE response headers are flushed and therefore can
+// no longer rely on Run to acquire the lock itself.
+//
+// Calling RunReserved without a prior Reserve breaks the single-flight
+// invariant; Reserve panics make this contract obvious in tests.
+func (o *Orchestrator) RunReserved(
+	ctx context.Context,
+	id domain.ProjectID,
+	spec domain.EntryPointSpec,
+	filters domain.Filters,
+	stream *api.SSEStreamer,
+) error {
+	if stream == nil {
+		return errors.New("orchestrator: nil SSEStreamer")
+	}
+	return o.runReserved(ctx, id, spec, filters, stream)
+}
+
+// Reserve attempts to acquire the per-project single-flight slot. The
+// returned release function must be called exactly once and is safe to call
+// from a deferred statement; subsequent calls are no-ops. When ok is false
+// another goroutine already holds the slot and the caller must surface
+// ErrAnalysisInProgress / a 409 to its consumer.
+func (o *Orchestrator) Reserve(id domain.ProjectID) (release func(), ok bool) {
+	mu, fresh := o.acquire(id)
+	if !fresh {
+		return func() {}, false
+	}
+	var once sync.Once
+	return func() { once.Do(mu.Unlock) }, true
+}
+
+// PreflightValidate runs the cheap, side-effect-free checks the HTTP layer
+// can resolve before opening the SSE response: spec.Mode shape and the
+// structural form of every manual / interface_impl FQN. Semantic resolution
+// (does the symbol exist? does the package compile?) is deferred to the
+// main pipeline so the response can carry it through SSE done:failed.
+//
+// The returned error is either nil or an *entry.InvalidEntryPointError so
+// the HTTP layer can render the canonical 400 envelope unchanged.
+func (o *Orchestrator) PreflightValidate(spec domain.EntryPointSpec, _ domain.Filters) error {
+	return validateEntryPointShape(spec)
+}
+
+// runReserved is the panic-safe pipeline runner shared by Run and
+// RunReserved. The caller owns the per-project single-flight slot.
+func (o *Orchestrator) runReserved(
+	ctx context.Context,
+	id domain.ProjectID,
+	spec domain.EntryPointSpec,
+	filters domain.Filters,
+	stream *api.SSEStreamer,
+) error {
 
 	logger := o.logger.With(slog.String("project_id", string(id)))
 	start := o.now()

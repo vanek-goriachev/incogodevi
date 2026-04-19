@@ -19,6 +19,11 @@ import (
 
 	"github.com/vanek-goriachev/incogodevi/server/internal/api"
 	"github.com/vanek-goriachev/incogodevi/server/internal/cache"
+	"github.com/vanek-goriachev/incogodevi/server/internal/entry"
+	"github.com/vanek-goriachev/incogodevi/server/internal/graph"
+	"github.com/vanek-goriachev/incogodevi/server/internal/orchestrator"
+	"github.com/vanek-goriachev/incogodevi/server/internal/parser"
+	"github.com/vanek-goriachev/incogodevi/server/internal/reach"
 	"github.com/vanek-goriachev/incogodevi/server/internal/web"
 )
 
@@ -51,6 +56,15 @@ func main() {
 		}
 	}()
 
+	analyzer := orchestrator.New(orchestrator.Options{
+		Cache:    cacheMgr,
+		Parser:   parser.New(cacheMgr, logger),
+		Builder:  graph.New(logger),
+		Resolver: entry.New(logger),
+		Reach:    reach.New(logger),
+		Logger:   logger,
+	})
+
 	apiSrv, err := api.NewServer(api.Config{
 		Cache:          cacheMgr,
 		StaticFS:       web.DistFS(),
@@ -58,6 +72,7 @@ func main() {
 		Version:        version,
 		StartedAt:      time.Now(),
 		TrustedOrigins: parseList(os.Getenv("GOVIZ_TRUSTED_ORIGINS")),
+		Analyzer:       analyzer,
 	})
 	if err != nil {
 		logger.Error("api init", slog.String("error", err.Error()))

@@ -24,7 +24,7 @@ Go 1.26 (stdlib `net/http.ServeMux` method-routing + `x/tools/go/packages` v0.44
 | T12 | HTTP скелет + middleware | T01, T04, T05 | M | backend/api | [x] |
 | T13 | AnalysisOrchestrator + SSE | T04, T05, T07, T11, T12 | M | backend/api | [x] |
 | T14 | POST /api/projects | T06, T12 | S | backend/api | [x] |
-| T15 | POST /analyze (SSE) | T10, T11, T13 | L | backend/api | [ ] |
+| T15 | POST /analyze (SSE) | T10, T11, T13 | L | backend/api | [x] |
 | T16 | GET /graph + /dead-code | T11, T12, T15 | M | backend/api | [ ] |
 | T17 | Frontend app shell | T02 | M | frontend/core | [ ] |
 | T18 | Landing + upload | T14, T17 | M | frontend/upload | [ ] |
@@ -141,7 +141,7 @@ graph TD
 - [x] T12 HTTP скелет + middleware
 - [x] T13 AnalysisOrchestrator + SSE
 - [x] T14 POST /api/projects
-- [ ] T15 POST /analyze (SSE)
+- [x] T15 POST /analyze (SSE)
 - [ ] T16 GET /graph + /dead-code
 - [ ] T17 Frontend app shell
 - [ ] T18 Landing + upload
