@@ -84,7 +84,26 @@ func (b *Builder) Build(ctx context.Context, in BuildInput, progress chan<- floa
 		state.addCallsAndReferences(pkg)
 	}
 
+	if err := b.resolveImplements(ctx, pkgs, state); err != nil {
+		return nil, err
+	}
+
 	return state.finalize(), nil
+}
+
+// resolveImplements runs the ImplementsResolver against the live packages and
+// merges the resulting edges into state. Pre-existing implements-edges from
+// earlier passes (currently none) are deduplicated by edgeKey.
+func (b *Builder) resolveImplements(ctx context.Context, pkgs []parser.LivePackage, state *buildState) error {
+	resolver := NewImplementsResolver(b.logger)
+	edges, err := resolver.Resolve(ctx, pkgs, state.typeFQNIndex(), nil)
+	if err != nil {
+		return fmt.Errorf("graph: implements resolver: %w", err)
+	}
+	for _, e := range edges {
+		state.addEdge(e.Source, e.Target, domain.EdgeKindImplements)
+	}
+	return nil
 }
 
 // sortLive returns a copy of pkgs ordered by PkgPath so that the produced
@@ -387,6 +406,20 @@ func (s *buildState) addEdge(src, tgt string, kind domain.EdgeKind) {
 		Weight: 1,
 	}
 	s.edgeOrder = append(s.edgeOrder, key)
+}
+
+// typeFQNIndex projects typeByObj into the FQN-keyed map expected by the
+// ImplementsResolver. Keys mirror the canonical form used by domain.NodeID
+// for type-level nodes ("<pkg>#<TypeName>").
+func (s *buildState) typeFQNIndex() map[string]string {
+	out := make(map[string]string, len(s.typeByObj))
+	for tn, id := range s.typeByObj {
+		if tn == nil || tn.Pkg() == nil {
+			continue
+		}
+		out[typeFQN(tn.Pkg().Path(), tn.Name())] = id
+	}
+	return out
 }
 
 // finalize materialises the accumulated state into a domain.Graph. Edges and
