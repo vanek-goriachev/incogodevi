@@ -6,7 +6,22 @@ the symptom and the recommended follow-up.
 
 ## Open
 
-_(none)_
+### orchestrator: re-analyze on cached project produces empty graph
+
+- **Where:** `server/internal/orchestrator/` cache-hit path in `Run` /
+  `RunReserved`. When `parser.Load` returns a cached `parsed.gob` (so
+  `LivePackages` is empty and `TypesUnavailable=true`), the graph builder is
+  invoked with no live packages and emits a 0-node graph plus a
+  `types_unavailable` warning.
+- **Symptom:** A second `POST /api/projects/{id}/analyze` for the same
+  project completes successfully but returns an empty graph. Frontend
+  currently never re-triggers analyze for the same id, so users do not see
+  this; surfaced during T21 E2E debugging.
+- **Discovered by:** T21 (2026-04-20).
+- **Suggested fix:** when `LivePackages` is empty, the orchestrator should
+  either (a) re-parse without using the cached `parsed.gob`, or (b) skip
+  graph rebuild and load `graph.json` directly from cache. Pick whichever
+  matches `docs/architecture.md` ADR-02 intent.
 
 ## Resolved
 
