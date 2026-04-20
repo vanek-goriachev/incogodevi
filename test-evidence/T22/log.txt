@@ -1,0 +1,28 @@
+T22 E2E run starting
+  fixtures: /Users/isegoryachev/Desktop/University/course_project/code_v2/project/web/e2e/fixtures
+J1: tap a node -> Info panel -> Add as entry -> chip appears
+  cy state initial: {'nodes': 28, 'edges': 45, 'hidden': 0, 'collapsedHidden': 0, 'collapsedRoot': 0}
+  picked node: {'id': '6a7f2df2b8d24689', 'name': 'Handle', 'package': 'example.com/multi/api', 'kind': 'method', 'is_entry': False, 'fqn': 'example.com/multi/api#Handle'}
+  info-panel-name: 'Handle'
+  screenshot: j1-01-info-panel-opened.png
+  manual chips before: 0
+  manual chips after: 1
+  screenshot: j1-02-after-add-entry.png
+  -> PASS: scenario_j1_info_and_add_entry
+J2: right-click -> hide subtree -> verify descendants hidden -> expand
+  picked root: {'id': 'f5afc48fc7384f73', 'name': 'main', 'package': 'example.com/multi', 'kind': 'package', 'outgoing': 1}
+  screenshot: j2-01-context-menu-opened.png
+  cy state after collapse: {'nodes': 28, 'edges': 45, 'hidden': 0, 'collapsedHidden': 15, 'collapsedRoot': 1}
+  screenshot: j2-02-after-collapse.png
+  cy state after expand: {'nodes': 28, 'edges': 45, 'hidden': 0, 'collapsedHidden': 0, 'collapsedRoot': 0}
+  screenshot: j2-03-after-expand.png
+  -> PASS: scenario_j2_collapse_and_expand
+J3: Add-entry dialog -> valid FQN succeeds, invalid surfaces inline error
+  invalid FQN -> submit disabled = True
+  screenshot: j3-01-invalid-fqn-error.png
+  submitting valid FQN multi/api#Server.Handler
+  dialog still open: False, server-error elements: 0
+  screenshot: j3-02-after-submit.png
+  -> PASS: scenario_j3_fqn_dialog
+T22 E2E elapsed: 5.7s
+T22 E2E run SUCCESS

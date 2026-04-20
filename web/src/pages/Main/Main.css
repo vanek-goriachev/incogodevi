@@ -77,6 +77,36 @@
   padding: 24px;
 }
 
+.main-view__expand-all {
+  font: inherit;
+  font-size: 11px;
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  color: var(--color-fg);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.main-view__expand-all:hover {
+  background-color: var(--color-bg);
+}
+
+.main-view__reanalyze {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-accent);
+  font-size: 12px;
+  color: var(--color-accent);
+  z-index: 10;
+  pointer-events: none;
+}
+
 /* ---------- Cytoscape canvas ---------- */
 
 .graph-canvas {

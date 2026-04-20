@@ -1,0 +1,143 @@
+/*
+ * Right-rail Info panel — design.md §3.3.
+ * Sits beside the dead-code report in the right rail.
+ */
+
+.info-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.info-panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.info-panel__title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-fg-muted);
+  margin: 0;
+}
+
+.info-panel__badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+}
+
+.info-panel__badge--reachable {
+  color: #166534;
+  border-color: #86efac;
+  background-color: #dcfce7;
+}
+
+.info-panel__badge--dead {
+  color: #92400e;
+  border-color: #fcd34d;
+  background-color: #fef3c7;
+}
+
+.info-panel__empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-fg-muted);
+}
+
+.info-panel__meta {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  row-gap: 4px;
+  column-gap: 8px;
+  font-size: 12px;
+}
+
+.info-panel__row {
+  display: contents;
+}
+
+.info-panel__row dt {
+  color: var(--color-fg-muted);
+  font-weight: 500;
+  text-transform: lowercase;
+}
+
+.info-panel__row dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.info-panel__row--doc dd {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+}
+
+.info-panel__mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.info-panel__doc {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-fg);
+  background-color: var(--color-bg-elevated);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+}
+
+.info-panel__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.info-panel__action {
+  font: inherit;
+  font-size: 12px;
+  background-color: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-fg);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.info-panel__action:hover:not(:disabled) {
+  background-color: var(--color-bg-elevated);
+}
+
+.info-panel__action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.info-panel__action--primary {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #ffffff;
+}
+
+.info-panel__action--primary:hover:not(:disabled) {
+  filter: brightness(1.05);
+  background-color: var(--color-accent);
+}
+
+.info-panel__hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-fg-muted);
+}

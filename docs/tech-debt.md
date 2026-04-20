@@ -22,6 +22,11 @@ the symptom and the recommended follow-up.
   either (a) re-parse without using the cached `parsed.gob`, or (b) skip
   graph rebuild and load `graph.json` directly from cache. Pick whichever
   matches `docs/architecture.md` ADR-02 intent.
+- **Mitigation in T22 (2026-04-20):** the frontend now detects the empty-graph
+  response (`web/src/pages/Main/MainView.tsx::handleReanalyzeDone`) and falls
+  back to a local BFS reachability recompute against the previously loaded
+  graph (`web/src/pages/Main/localReachability.ts`). The user gets a toast
+  warning that highlight is local-only until the backend bug is fixed.
 
 ## Resolved
 
