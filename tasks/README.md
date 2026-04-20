@@ -35,7 +35,7 @@ Go 1.26 (stdlib `net/http.ServeMux` method-routing + `x/tools/go/packages` v0.44
 | T23 | Dead-code panel + modes | T16, T20 | M | frontend/graph | [x] |
 | T24 | PNG/SVG export + aggregation | T20 | M | frontend/graph | [x] |
 | T25 | Dockerfile multi-arch | T16, T24 | S | infra | [x] |
-| T26 | E2E Playwright suite | T25 | L | test | [ ] |
+| T26 | E2E Playwright suite | T25 | L | test | [x] |
 | T27 | Demo projects + walkthrough | T26 | S | demo | [ ] |
 
 Size: S ≈ полдня, M ≈ день, L ≈ 2–3 дня.
@@ -152,5 +152,5 @@ graph TD
 - [x] T23 Dead-code panel + modes
 - [x] T24 PNG/SVG export + aggregation
 - [x] T25 Dockerfile multi-arch
-- [ ] T26 E2E Playwright suite
+- [x] T26 E2E Playwright suite
 - [ ] T27 Demo projects + walkthrough
