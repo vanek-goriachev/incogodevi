@@ -27,6 +27,7 @@ import cytoscape, {
   type NodeSingular,
   type StylesheetStyle,
 } from 'cytoscape';
+import cola from 'cytoscape-cola';
 import fcose from 'cytoscape-fcose';
 import {
   useCallback,
@@ -43,15 +44,17 @@ import { buildStylesheet, type ThemeTokens } from './graph-styles';
 import { Tooltip, type TooltipPayload } from './Tooltip';
 import { usePositionsStorage, type PositionMap } from './usePositionsStorage';
 
-// Register the fcose layout exactly once. cytoscape's `use()` is idempotent
-// for the same extension reference.
-let fcoseRegistered = false;
-function ensureFcoseRegistered(): void {
-  if (fcoseRegistered) {
+// Register the cola + fcose layouts exactly once. cytoscape's `use()` is
+// idempotent for the same extension reference. fcose is retained as a
+// fallback in case future code wants the heuristic spread.
+let layoutsRegistered = false;
+function ensureLayoutsRegistered(): void {
+  if (layoutsRegistered) {
     return;
   }
   cytoscape.use(fcose);
-  fcoseRegistered = true;
+  cytoscape.use(cola);
+  layoutsRegistered = true;
 }
 
 /** Maximum number of entry-point nodes pinned to the top row. */
@@ -112,7 +115,7 @@ export function GraphCanvas({
   rendererOverride = null,
   onCyReady,
 }: GraphCanvasProps): JSX.Element {
-  ensureFcoseRegistered();
+  ensureLayoutsRegistered();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<Core | null>(null);
@@ -240,9 +243,18 @@ export function GraphCanvas({
         snap[n.id()] = { x: p.x, y: p.y };
       });
       positions.write(snap);
-      // Auto-fit so the freshly produced layout is fully visible. Skipped
-      // when the user has interacted with the graph to respect their pan/zoom.
-      cy.fit(undefined, 40);
+      // Zoom-capped fit: fit the graph but never below `minReadableZoom`.
+      // For big graphs whose natural cola layout is a long lens (200+
+      // nodes), an unconstrained fit shrinks nodes to dust. The cap keeps
+      // labels legible — the user pans from the centred view if they need
+      // to see the periphery.
+      cy.fit(undefined, 60);
+      const z = cy.zoom();
+      const minReadableZoom = 0.55;
+      if (z < minReadableZoom) {
+        cy.zoom(minReadableZoom);
+        cy.center();
+      }
     });
   }, [graph, positions, reducedMotion]);
 
@@ -498,55 +510,57 @@ function runLayout(
     return;
   }
 
-  // Skip the entry-row pin when there is exactly one entry, or when the
-  // graph is large enough that pinning warps the force layout instead of
-  // helping it (the pin keeps a fixed cluster of nodes far from the rest).
-  const entryCount = graph.nodes.reduce((acc, n) => acc + (n.is_entry ? 1 : 0), 0);
-  const shouldPin = entryCount >= 2 && entryCount <= ENTRY_PIN_LIMIT && graph.nodes.length <= 60;
-  if (shouldPin) {
-    pinEntryPoints(cy, graph);
-  } else {
-    cy.batch(() => {
-      cy.nodes().forEach((n) => {
-        n.unlock();
-      });
+  // Always start from a fully unlocked state — cola moves every node it sees
+  // and any leftover lock from the previous (fcose-era) entry-row pin would
+  // wedge the constraint solver.
+  cy.batch(() => {
+    cy.nodes().forEach((n) => {
+      n.unlock();
     });
-  }
+  });
 
-  // Scale repulsion / edge length with graph size: small graphs read fine
-  // with the previous defaults, big graphs need much more breathing room
-  // before the central cluster relaxes. Bands chosen empirically against
-  // multi (28), aggregated stdlib (64) and chi (197) fixtures.
+  // Cola is constraint-based — it can hard-guarantee no node overlap
+  // (avoidOverlap), which fcose merely tries heuristically. Combined with
+  // a generous edge length and a small repulsion, this produces an
+  // Obsidian-like spread on dense graphs.
+  //
+  // Large graphs (chi 197, urfave/cli 204) need MUCH more breathing room
+  // than the cola defaults: small nodeSpacing leaves dense clusters that
+  // cola refuses to expand because avoidOverlap is already satisfied.
+  // Bands chosen empirically against multi (28), chi (197), urfave (204).
   const n = graph.nodes.length;
   const big = n > 80;
   const huge = n > 150;
   const baseLayoutOpts = {
-    name: 'fcose',
-    randomize: true,
-    quality: 'proof',
-    nodeRepulsion: huge ? 90000 : big ? 45000 : 18000,
-    idealEdgeLength: huge ? 360 : big ? 260 : 200,
-    nodeSeparation: huge ? 240 : big ? 160 : 110,
-    edgeElasticity: 0.45,
-    gravity: huge ? 0.08 : 0.15,
-    gravityRange: 3.8,
-    gravityCompound: 1.0,
-    gravityRangeCompound: 1.5,
-    numIter: huge ? 6500 : big ? 4500 : 3500,
+    name: 'cola',
+    animate: !reducedMotion,
+    refresh: 1,
+    maxSimulationTime: huge ? 8000 : big ? 5500 : 3500,
+    ungrabifyWhileSimulating: false,
+    // We disable cola's auto-fit — for big graphs whose natural shape is a
+    // long lens, the fit zooms out so far that nodes become microscopic.
+    // The post-layout snapshot handler in the graph effect performs a
+    // zoom-capped fit instead so labels stay legible.
+    fit: false,
     padding: 60,
-    packComponents: true,
-    componentSpacing: huge ? 260 : 140,
-    nodeDimensionsIncludeLabels: true,
-    tile: true,
-    tilingPaddingHorizontal: huge ? 80 : 60,
-    tilingPaddingVertical: huge ? 80 : 60,
-    uniformNodeDimensions: false,
-    fit: true,
+    // nodeSpacing tuned per band. Big/huge graphs need more breathing room
+    // before avoidOverlap freezes positions.
+    nodeSpacing: huge ? 60 : big ? 40 : 20,
+    edgeLength: huge ? 320 : big ? 240 : 160,
+    edgeSymDiffLength: huge ? 320 : big ? 240 : 160,
+    avoidOverlap: true,
+    handleDisconnected: true,
+    convergenceThreshold: 0.005,
+    randomize: true,
+    // More preliminary unconstrained iterations let the simulation spread
+    // before the overlap constraint kicks in and freezes positions.
+    unconstrIter: huge ? 60 : big ? 40 : 20,
+    userConstIter: 15,
+    allConstIter: 30,
+    flow: undefined, // physics layout, not hierarchical
+    infinite: false,
   };
-  const layoutOpts: LayoutOptions = reducedMotion
-    ? ({ ...baseLayoutOpts, animate: false } as unknown as LayoutOptions)
-    : ({ ...baseLayoutOpts, animate: 'end', animationDuration: 600 } as unknown as LayoutOptions);
-  cy.layout(layoutOpts).run();
+  cy.layout(baseLayoutOpts as unknown as LayoutOptions).run();
 }
 
 /**
@@ -558,6 +572,11 @@ function runLayout(
  * extent-derived row even when it isn't degenerate — so the row was both
  * cramped and ignored. Fixed spacing keeps the entry row readable and lets
  * the subsequent `cy.fit()` re-frame everything together.
+ *
+ * NOTE: the cola layout (current default) does not need an entry-row pin —
+ * `avoidOverlap` plus the disconnected-component handling already produce a
+ * readable spread. The helper is kept for callers that may still want the
+ * fcose flow and so existing test scaffolding can exercise it.
  */
 function pinEntryPoints(cy: Core, graph: Graph): void {
   const entryNodes = graph.nodes.filter((n) => n.is_entry);
@@ -582,6 +601,12 @@ function pinEntryPoints(cy: Core, graph: Graph): void {
     });
   });
 }
+
+// Keep `pinEntryPoints` reachable for the type-checker even though the
+// active cola layout does not invoke it. Tests or a future fcose flow can
+// still reference the symbol; this avoids deleting working logic that may
+// be re-enabled later.
+void pinEntryPoints;
 
 /** Centre point of the current viewport in rendered coordinates. */
 function viewportCenter(cy: Core): { x: number; y: number } {
