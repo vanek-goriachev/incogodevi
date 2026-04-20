@@ -183,6 +183,20 @@ export function buildStylesheet(theme: ThemeTokens): StylesheetStyle[] {
     });
   }
 
+  // ---- aggregated package badge (T24, FR-18) ----
+  // When `aggregate=package` collapses a graph the backend annotates each
+  // package node with `child_count`. `GraphCanvas.syncElements` mirrors the
+  // pair into a `display_label` data field; when present, the per-kind label
+  // overrides the default `data(name)` mapper to read it.
+  sheet.push({
+    selector: 'node[kind="package"][display_label]',
+    style: {
+      label: 'data(display_label)',
+      'font-weight': 600,
+      'border-width': 3,
+    },
+  });
+
   // ---- selection ring ----
   sheet.push({
     selector: 'node:selected',

@@ -37,6 +37,12 @@ export interface Node {
   reachable: boolean;
   is_entry: boolean;
   doc?: string;
+  /**
+   * Number of child symbols collapsed into this node when the graph view is
+   * package-aggregated (ADR-06). Omitted for ordinary nodes; the backend sends
+   * it only on aggregated package nodes.
+   */
+  child_count?: number;
 }
 
 export interface Edge {
