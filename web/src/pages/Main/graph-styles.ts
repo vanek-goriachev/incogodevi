@@ -183,6 +183,22 @@ export function buildStylesheet(theme: ThemeTokens): StylesheetStyle[] {
     });
   }
 
+  // ---- adaptive package node sizing (T20 hot-fix) ----
+  // The static 180-px width from `NODE_KIND_STYLES.package` is too narrow for
+  // labels like "syscall (2920)" that the package-aggregation produces. Let
+  // Cytoscape size package nodes from their label content so nothing is
+  // clipped. The `'label'` value is documented for the sizing properties but
+  // typed as `number` in the SDK, hence the cast through `unknown`.
+  sheet.push({
+    selector: 'node[kind="package"]',
+    style: {
+      width: 'label' as unknown as number,
+      height: 'label' as unknown as number,
+      padding: '12px',
+      'text-max-width': '300px',
+    },
+  });
+
   // ---- aggregated package badge (T24, FR-18) ----
   // When `aggregate=package` collapses a graph the backend annotates each
   // package node with `child_count`. `GraphCanvas.syncElements` mirrors the
