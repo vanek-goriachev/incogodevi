@@ -9,8 +9,10 @@
  *
  * Layout strategy (design.md §5.4):
  *   1. If a per-node position was persisted in localStorage, restore it.
- *   2. Otherwise pin entry-point nodes to a fixed top row (≤ 12 of them) and
- *      let the fcose plugin lay out the rest around them.
+ *   2. Otherwise pin entry-point nodes to a horizontal row centred on the
+ *      layout origin (≤ 12 of them) and let the fcose plugin lay out the
+ *      rest around them. After the layout settles we `cy.fit()` so the
+ *      whole graph is visible without manual panning.
  *   3. Past 12 entry-point nodes, fall back to a plain fcose run — the row
  *      becomes too crowded to be useful.
  *
@@ -54,10 +56,12 @@ function ensureFcoseRegistered(): void {
 
 /** Maximum number of entry-point nodes pinned to the top row. */
 export const ENTRY_PIN_LIMIT = 12;
-/** Y coordinate for the entry-point row. */
-const ENTRY_ROW_Y = 60;
-/** Horizontal padding inside the viewport when distributing entry-pins. */
-const ENTRY_ROW_PADDING_X = 80;
+/**
+ * Horizontal step (in layout coordinates) between adjacent pinned entry
+ * nodes. Independent of viewport extent because `packComponents: true` makes
+ * fcose ignore any pre-layout extent estimate we might compute (T20 fix).
+ */
+const ENTRY_ROW_STEP = 220;
 /** Tooltip dwell time (FR-17). */
 const TOOLTIP_DELAY_MS = 300;
 
@@ -236,6 +240,9 @@ export function GraphCanvas({
         snap[n.id()] = { x: p.x, y: p.y };
       });
       positions.write(snap);
+      // Auto-fit so the freshly produced layout is fully visible. Skipped
+      // when the user has interacted with the graph to respect their pan/zoom.
+      cy.fit(undefined, 40);
     });
   }, [graph, positions, reducedMotion]);
 
@@ -493,20 +500,35 @@ function runLayout(
 
   pinEntryPoints(cy, graph);
 
+  const baseLayoutOpts = {
+    name: 'fcose',
+    randomize: true,
+    quality: 'proof',
+    nodeRepulsion: 12000,
+    idealEdgeLength: 180,
+    nodeSeparation: 80,
+    padding: 40,
+    packComponents: true,
+    nodeDimensionsIncludeLabels: true,
+    tile: true,
+    fit: true,
+  };
   const layoutOpts: LayoutOptions = reducedMotion
-    ? ({ name: 'fcose', animate: false, randomize: true, nodeRepulsion: 4500, idealEdgeLength: 80 } as unknown as LayoutOptions)
-    : ({
-        name: 'fcose',
-        animate: 'end',
-        animationDuration: 400,
-        randomize: true,
-        nodeRepulsion: 4500,
-        idealEdgeLength: 80,
-      } as unknown as LayoutOptions);
+    ? ({ ...baseLayoutOpts, animate: false } as unknown as LayoutOptions)
+    : ({ ...baseLayoutOpts, animate: 'end', animationDuration: 400 } as unknown as LayoutOptions);
   cy.layout(layoutOpts).run();
 }
 
-/** Pin entry-point nodes to the top row (design.md §5.4). */
+/**
+ * Pin entry-point nodes to a horizontal row centred on the layout origin.
+ *
+ * Uses fixed `ENTRY_ROW_STEP` spacing in layout coordinates rather than
+ * `cy.extent()`. On a freshly mounted Cytoscape instance the extent is
+ * degenerate, and after we enabled `packComponents: true` fcose ignores any
+ * extent-derived row even when it isn't degenerate — so the row was both
+ * cramped and ignored. Fixed spacing keeps the entry row readable and lets
+ * the subsequent `cy.fit()` re-frame everything together.
+ */
 function pinEntryPoints(cy: Core, graph: Graph): void {
   const entryNodes = graph.nodes.filter((n) => n.is_entry);
   cy.batch(() => {
@@ -517,21 +539,15 @@ function pinEntryPoints(cy: Core, graph: Graph): void {
   if (entryNodes.length === 0 || entryNodes.length > ENTRY_PIN_LIMIT) {
     return;
   }
-  const ext = cy.extent();
-  const x1 = ext.x1 + ENTRY_ROW_PADDING_X;
-  const x2 = ext.x2 - ENTRY_ROW_PADDING_X;
-  // When the viewport is empty fcose reports a degenerate extent; fall back
-  // to a 1024-wide synthetic row so the spacing is at least sensible.
-  const safeWidth = Math.max(x2 - x1, 1024);
-  const step = entryNodes.length > 1 ? safeWidth / (entryNodes.length - 1) : 0;
-  const y = ext.y1 + ENTRY_ROW_Y;
+  const totalWidth = (entryNodes.length - 1) * ENTRY_ROW_STEP;
+  const x0 = -totalWidth / 2;
   cy.batch(() => {
     entryNodes.forEach((node, idx) => {
       const cyNode = cy.$id(node.id);
       if (cyNode.empty()) {
         return;
       }
-      cyNode.position({ x: x1 + step * idx, y });
+      cyNode.position({ x: x0 + idx * ENTRY_ROW_STEP, y: 0 });
       cyNode.lock();
     });
   });
