@@ -1,6 +1,6 @@
 {
-  "project_id": "7QLV7D6tGKHM0Ib-W6wXxQ",
-  "generated_at": "2026-04-20T07:57:57.579152115Z",
+  "project_id": "-ZOCOoNtKduU5yheuP7zmg",
+  "generated_at": "2026-04-20T08:53:21.48857515Z",
   "entries_count": 31,
   "entries": [
     {
@@ -8,7 +8,7 @@
       "fqn": "example.com/simple/internal/dead.LegacyAdder",
       "package": "example.com/simple/internal/dead",
       "name": "LegacyAdder",
-      "file": "/tmp/go-viz/sources/7QLV7D6tGKHM0Ib-W6wXxQ/internal/dead/dead.go",
+      "file": "/tmp/go-viz/sources/-ZOCOoNtKduU5yheuP7zmg/internal/dead/dead.go",
       "line": 7,
       "reason": "unreachable"
     },
@@ -17,7 +17,7 @@
       "fqn": "example.com/simple/internal/dead.LegacyMultiplier",
       "package": "example.com/simple/internal/dead",
       "name": "LegacyMultiplier",
-      "file": "/tmp/go-viz/sources/7QLV7D6tGKHM0Ib-W6wXxQ/internal/dead/dead.go",
+      "file": "/tmp/go-viz/sources/-ZOCOoNtKduU5yheuP7zmg/internal/dead/dead.go",
       "line": 13,
       "reason": "unreachable"
     },
@@ -26,7 +26,7 @@
       "fqn": "example.com/simple/internal/dead.UnusedConst",
       "package": "example.com/simple/internal/dead",
       "name": "UnusedConst",
-      "file": "/tmp/go-viz/sources/7QLV7D6tGKHM0Ib-W6wXxQ/internal/dead/dead.go",
+      "file": "/tmp/go-viz/sources/-ZOCOoNtKduU5yheuP7zmg/internal/dead/dead.go",
       "line": 18,
       "reason": "unreachable"
     },

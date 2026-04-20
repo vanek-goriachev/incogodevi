@@ -1,5 +1,6 @@
 [fixtures] skip simple (cached: /Users/isegoryachev/Desktop/University/course_project/code_v2/project/e2e/fixtures/.cache/simple.zip)
 [fixtures] skip medium (cached: /Users/isegoryachev/Desktop/University/course_project/code_v2/project/e2e/fixtures/.cache/medium.zip)
+[fixtures] skip demo-small (cached: /Users/isegoryachev/Desktop/University/course_project/code_v2/project/e2e/fixtures/.cache/demo-small.zip)
 [fixtures] done
 [e2e] backend reachable at http://localhost:8080
 
@@ -15,13 +16,13 @@ upload posted, waiting for analyzing screen
 analysis done, waiting for graph ready
 graph ready
 stats: {"nodes":64,"edges":233,"reachable":61,"dead":3}
-  ✓  1 [webkit] › specs/j1-first-upload.spec.ts:18:3 › J1 — first upload happy path › uploads simple fixture, reaches done, renders graph with dead-code (19.1s)
-  ✓  2 [webkit] › specs/j2-entry-points.spec.ts:32:3 › J2 — change entry points › adding manual entry recomputes graph and updates dead-code panel (18.7s)
-  ✓  3 [webkit] › specs/j3-reload-restore.spec.ts:27:3 › J3 — reload restores graph and positions › positions in localStorage survive a full reload (18.9s)
-  ✓  4 [webkit] › specs/j4-export.spec.ts:20:3 › J4 — export dead-code report › downloads TXT and JSON containing the known dead symbols (18.4s)
-  ✓  5 [webkit] › specs/nfr-01-bench.spec.ts:23:3 › NFR-01 — medium-project analyze under reference budget › uploads medium fixture and times the full pipeline (865ms)
-  ✓  6 [webkit] › specs/nfr.spec.ts:24:3 › NFR-02 — first render under 5s › chromium and webkit both render the simple fixture in <= 5000 ms (17.9s)
-  ✓  7 [webkit] › specs/nfr.spec.ts:49:3 › NFR-03 — filter toggle under 100 ms › toggling a kind filter updates the graph in <= 100 ms (18.2s)
-  ✓  8 [webkit] › specs/nfr.spec.ts:132:3 › NFR-09 — UI survives a 500 on dead-code fetch › error boundary in DeadCodePanel surfaces and Retry recovers (18.1s)
+  ✓  1 [webkit] › specs/j1-first-upload.spec.ts:18:3 › J1 — first upload happy path › uploads simple fixture, reaches done, renders graph with dead-code (18.2s)
+  ✓  2 [webkit] › specs/j2-entry-points.spec.ts:32:3 › J2 — change entry points › adding manual entry recomputes graph and updates dead-code panel (18.5s)
+  ✓  3 [webkit] › specs/j3-reload-restore.spec.ts:27:3 › J3 — reload restores graph and positions › positions in localStorage survive a full reload (19.3s)
+  ✓  4 [webkit] › specs/j4-export.spec.ts:20:3 › J4 — export dead-code report › downloads TXT and JSON containing the known dead symbols (18.1s)
+  ✓  5 [webkit] › specs/nfr-01-bench.spec.ts:23:3 › NFR-01 — medium-project analyze under reference budget › uploads medium fixture and times the full pipeline (40.4s)
+  ✓  6 [webkit] › specs/nfr.spec.ts:24:3 › NFR-02 — first render under 5s › chromium and webkit both render the simple fixture in <= 5000 ms (18.3s)
+  ✓  7 [webkit] › specs/nfr.spec.ts:49:3 › NFR-03 — filter toggle under 100 ms › toggling a kind filter updates the graph in <= 100 ms (18.0s)
+  ✓  8 [webkit] › specs/nfr.spec.ts:132:3 › NFR-09 — UI survives a 500 on dead-code fetch › error boundary in DeadCodePanel surfaces and Retry recovers (17.5s)
 
-  8 passed (2.2m)
+  8 passed (2.8m)

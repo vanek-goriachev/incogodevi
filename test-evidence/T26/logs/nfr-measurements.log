@@ -14,3 +14,11 @@
 2026-04-20T08:00:40.462Z NFR-02 webkit elapsed_ms=54
 2026-04-20T08:00:58.709Z NFR-03 webkit samples_ms=[178,113,63,53,57] median_ms=63 max_ms=178
 2026-04-20T08:01:16.777Z NFR-09 webkit recovered=true
+2026-04-20T08:51:06.065Z NFR-01 chromium fixture=medium elapsed_ms=36680
+2026-04-20T08:51:23.763Z NFR-02 chromium elapsed_ms=185
+2026-04-20T08:51:40.823Z NFR-03 chromium samples_ms=[77,63,71,61,53] median_ms=63 max_ms=77
+2026-04-20T08:51:57.770Z NFR-09 chromium recovered=true
+2026-04-20T08:54:00.510Z NFR-01 webkit fixture=medium elapsed_ms=38276
+2026-04-20T08:54:20.709Z NFR-02 webkit elapsed_ms=372
+2026-04-20T08:54:38.724Z NFR-03 webkit samples_ms=[92,95,69,96,85] median_ms=92 max_ms=96
+2026-04-20T08:54:56.202Z NFR-09 webkit recovered=true

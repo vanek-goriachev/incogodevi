@@ -498,24 +498,54 @@ function runLayout(
     return;
   }
 
-  pinEntryPoints(cy, graph);
+  // Skip the entry-row pin when there is exactly one entry, or when the
+  // graph is large enough that pinning warps the force layout instead of
+  // helping it (the pin keeps a fixed cluster of nodes far from the rest).
+  const entryCount = graph.nodes.reduce((acc, n) => acc + (n.is_entry ? 1 : 0), 0);
+  const shouldPin = entryCount >= 2 && entryCount <= ENTRY_PIN_LIMIT && graph.nodes.length <= 60;
+  if (shouldPin) {
+    pinEntryPoints(cy, graph);
+  } else {
+    cy.batch(() => {
+      cy.nodes().forEach((n) => {
+        n.unlock();
+      });
+    });
+  }
 
+  // Scale repulsion / edge length with graph size: small graphs read fine
+  // with the previous defaults, big graphs need much more breathing room
+  // before the central cluster relaxes. Bands chosen empirically against
+  // multi (28), aggregated stdlib (64) and chi (197) fixtures.
+  const n = graph.nodes.length;
+  const big = n > 80;
+  const huge = n > 150;
   const baseLayoutOpts = {
     name: 'fcose',
     randomize: true,
     quality: 'proof',
-    nodeRepulsion: 12000,
-    idealEdgeLength: 180,
-    nodeSeparation: 80,
-    padding: 40,
+    nodeRepulsion: huge ? 90000 : big ? 45000 : 18000,
+    idealEdgeLength: huge ? 360 : big ? 260 : 200,
+    nodeSeparation: huge ? 240 : big ? 160 : 110,
+    edgeElasticity: 0.45,
+    gravity: huge ? 0.08 : 0.15,
+    gravityRange: 3.8,
+    gravityCompound: 1.0,
+    gravityRangeCompound: 1.5,
+    numIter: huge ? 6500 : big ? 4500 : 3500,
+    padding: 60,
     packComponents: true,
+    componentSpacing: huge ? 260 : 140,
     nodeDimensionsIncludeLabels: true,
     tile: true,
+    tilingPaddingHorizontal: huge ? 80 : 60,
+    tilingPaddingVertical: huge ? 80 : 60,
+    uniformNodeDimensions: false,
     fit: true,
   };
   const layoutOpts: LayoutOptions = reducedMotion
     ? ({ ...baseLayoutOpts, animate: false } as unknown as LayoutOptions)
-    : ({ ...baseLayoutOpts, animate: 'end', animationDuration: 400 } as unknown as LayoutOptions);
+    : ({ ...baseLayoutOpts, animate: 'end', animationDuration: 600 } as unknown as LayoutOptions);
   cy.layout(layoutOpts).run();
 }
 
