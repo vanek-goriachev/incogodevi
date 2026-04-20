@@ -244,6 +244,20 @@ export function buildStylesheet(theme: ThemeTokens): StylesheetStyle[] {
     },
   });
 
+  // ---- dead-mode hide classes (design.md §5.3, applied by useDeadMode) ----
+  sheet.push({
+    selector: '.mode-hide-live',
+    style: {
+      display: 'none',
+    },
+  });
+  sheet.push({
+    selector: '.mode-hide-dead',
+    style: {
+      display: 'none',
+    },
+  });
+
   return sheet;
 }
 

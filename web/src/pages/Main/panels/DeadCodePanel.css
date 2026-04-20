@@ -1,0 +1,194 @@
+/*
+ * Right-rail Dead-code panel — design.md §3.3, §7.
+ * Shares the panel block pattern with InfoPanel (§5.5 tokens).
+ */
+
+.dead-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.dead-panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dead-panel__title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-fg-muted);
+  margin: 0;
+}
+
+.dead-panel__count {
+  color: var(--color-fg);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.dead-panel__actions {
+  display: flex;
+  gap: 4px;
+}
+
+.dead-panel__action {
+  font: inherit;
+  font-size: 11px;
+  background-color: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-fg);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.dead-panel__action:hover:not(:disabled) {
+  background-color: var(--color-bg-elevated);
+}
+
+.dead-panel__action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dead-panel__hint,
+.dead-panel__empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-fg-muted);
+}
+
+.dead-panel__empty {
+  padding: 8px 0;
+}
+
+.dead-panel__error {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.dead-panel__error-text {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.dead-panel__error-detail {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-fg-muted);
+  word-break: break-word;
+}
+
+.dead-panel__retry {
+  align-self: flex-start;
+  font: inherit;
+  font-size: 11px;
+  background-color: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-fg);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.dead-panel__retry:hover {
+  background-color: var(--color-bg);
+}
+
+.dead-panel__skeleton {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dead-panel__skeleton li {
+  height: 18px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-elevated) 0%,
+    var(--color-border) 50%,
+    var(--color-bg-elevated) 100%
+  );
+  background-size: 200% 100%;
+  animation: dead-panel-skeleton 1.4s ease-in-out infinite;
+}
+
+@keyframes dead-panel-skeleton {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.dead-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 11px;
+}
+
+.dead-panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  line-height: 1.3;
+}
+
+.dead-panel__row:hover,
+.dead-panel__row:focus-visible {
+  background-color: var(--color-bg-elevated);
+  outline: none;
+}
+
+.dead-panel__row:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+.dead-panel__kind {
+  display: inline-block;
+  min-width: 38px;
+  padding: 0 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-fg-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.dead-panel__fqn {
+  word-break: break-all;
+  color: var(--color-fg);
+}
+
+.dead-panel__file {
+  color: var(--color-fg-muted);
+  font-size: 10px;
+}

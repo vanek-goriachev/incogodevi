@@ -3,7 +3,8 @@
  *
  * Left rail: entry-points panel (T22) on top, filters panel (T21) below.
  * Centre:    Cytoscape canvas with the right-click context menu.
- * Right rail: Info panel (T22). Dead-code report arrives in T23.
+ * Right rail: Info panel (T22) + Dead-code panel (T23).
+ * Top bar:   project headline, dead-mode segmented control (T23), refresh.
  *
  * The view owns:
  *
@@ -45,9 +46,11 @@ import {
 import { projectKey } from '../../storage/keys';
 import { useLocalStorage } from '../../storage/useLocalStorage';
 import { ContextMenu } from './ContextMenu';
+import { DeadModeSwitcher } from './DeadModeSwitcher';
 import { GraphCanvas } from './GraphCanvas';
 import { readThemeTokens, type ThemeTokens } from './graph-styles';
 import { recomputeReachability } from './localReachability';
+import { DeadCodePanel } from './panels/DeadCodePanel';
 import { EntryPointsPanel } from './panels/EntryPointsPanel';
 import { FiltersPanel } from './panels/FiltersPanel';
 import {
@@ -57,6 +60,7 @@ import {
 } from './panels/filterSpec';
 import { InfoPanel } from './panels/InfoPanel';
 import { useCollapse } from './useCollapse';
+import { useDeadMode } from './useDeadMode';
 import { useFilters } from './useFilters';
 import { useGraphData } from './useGraphData';
 import { useReanalyze } from './useReanalyze';
@@ -168,6 +172,34 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
   }, [localGraph, state.graph]);
 
   const collapse = useCollapse(cy, projectId);
+  const deadMode = useDeadMode(projectId, cy);
+
+  // Bumped after every successful graph refresh / re-analyze so the
+  // DeadCodePanel knows to re-fetch its report. The graph snapshot itself
+  // is not a stable identity (object reference changes per render even
+  // when nothing semantically changed), so we derive a counter from the
+  // ready transitions.
+  const [reportRefreshKey, setReportRefreshKey] = useState<number>(0);
+  const lastReadyAtRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (state.status !== 'ready') {
+      return;
+    }
+    const stamp = state.graph.generated_at;
+    if (lastReadyAtRef.current === stamp) {
+      return;
+    }
+    lastReadyAtRef.current = stamp;
+    setReportRefreshKey((n) => n + 1);
+  }, [state]);
+
+  // Re-apply the dead-mode classes whenever the graph data changes so newly
+  // added nodes (e.g. after a partial_graph SSE chunk) inherit the current
+  // visibility rules. The hook itself already applies on mount and on mode
+  // change; this effect bridges the third dimension — graph topology.
+  useEffect(() => {
+    deadMode.refresh();
+  }, [deadMode, state]);
 
   // Reset selection on project change so the right-rail does not dangle on
   // a stale id.
@@ -286,6 +318,7 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
         topBar={
           <div className="main-view__top-bar">
             <strong data-testid="main-project-name">{headline}</strong>
+            <DeadModeSwitcher value={deadMode.mode} onChange={deadMode.setMode} />
             <button
               type="button"
               className="main-view__refresh"
@@ -331,8 +364,15 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
                 Expand all ({String(collapse.collapsedIds.size)} collapsed)
               </button>
             ) : null}
-            <h3 className="main-view__rail-title">Dead code</h3>
-            <p className="main-view__rail-hint">Report tab arrives in T23.</p>
+            <DeadCodePanel
+              apiClient={apiClient}
+              projectId={projectId}
+              projectName={projectName}
+              refreshKey={reportRefreshKey}
+              cy={cy}
+              graph={effectiveGraph}
+              onSelectNode={handleSelectNode}
+            />
           </div>
         }
       >
