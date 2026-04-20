@@ -1,0 +1,344 @@
+/*
+ * Left-rail Entry-points panel — sits above the filters panel.
+ * Mirrors design.md §3.3 wireframe.
+ */
+
+.entry-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.entry-panel__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.entry-panel__title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-fg-muted);
+  margin: 0;
+}
+
+.entry-panel__summary {
+  font-size: 11px;
+  color: var(--color-fg-muted);
+  font-family: var(--font-mono);
+}
+
+.entry-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.entry-panel__row-label {
+  color: var(--color-fg);
+}
+
+.entry-panel__row-label code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background-color: var(--color-bg-elevated);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+.entry-panel__manual {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.entry-panel__hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-fg-muted);
+  font-style: italic;
+}
+
+.entry-panel__chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 4px 2px 8px;
+  font-size: 11px;
+}
+
+.entry-panel__chip-label {
+  flex: 1;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry-panel__chip-remove {
+  font: inherit;
+  background: transparent;
+  border: none;
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.entry-panel__chip-remove:hover:not(:disabled) {
+  color: #b91c1c;
+}
+
+.entry-panel__chip-remove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.entry-panel__add {
+  margin-top: 4px;
+  font: inherit;
+  font-size: 12px;
+  background-color: var(--color-bg-elevated);
+  border: 1px dashed var(--color-border);
+  color: var(--color-fg);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.entry-panel__add:hover:not(:disabled) {
+  background-color: var(--color-bg);
+}
+
+.entry-panel__add:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.entry-panel__warn {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #92400e;
+}
+
+/* ---------- Add-entry dialog ---------- */
+
+.entry-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.45);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 50;
+  padding: 24px;
+}
+
+.entry-dialog {
+  width: 100%;
+  max-width: 460px;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+
+.entry-dialog__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.entry-dialog__title {
+  margin: 0;
+  font-size: 14px;
+}
+
+.entry-dialog__close {
+  font: inherit;
+  background: transparent;
+  border: none;
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 6px;
+}
+
+.entry-dialog__close:hover {
+  color: var(--color-fg);
+}
+
+.entry-dialog__tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.entry-dialog__tab {
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  padding: 6px 10px;
+}
+
+.entry-dialog__tab--active {
+  color: var(--color-fg);
+  border-bottom-color: var(--color-accent);
+}
+
+.entry-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.entry-dialog__label {
+  font-size: 12px;
+  color: var(--color-fg-muted);
+}
+
+.entry-dialog__search,
+.entry-dialog__input {
+  font: inherit;
+  font-size: 13px;
+  background-color: var(--color-bg-elevated);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+
+.entry-dialog__input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.entry-dialog__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.entry-dialog__list-item {
+  display: block;
+}
+
+.entry-dialog__pick {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.entry-dialog__pick:hover:not(:disabled) {
+  background-color: var(--color-bg-elevated);
+}
+
+.entry-dialog__pick:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.entry-dialog__pick-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry-dialog__pick-pkg {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-fg-muted);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry-dialog__pick-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--color-fg-muted);
+  letter-spacing: 0.04em;
+}
+
+.entry-dialog__hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-fg-muted);
+}
+
+.entry-dialog__hint code {
+  font-family: var(--font-mono);
+  background-color: var(--color-bg-elevated);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+.entry-dialog__error {
+  margin: 0;
+  font-size: 11px;
+  color: #b91c1c;
+}
+
+.entry-dialog__error--server {
+  border: 1px solid #fecaca;
+  background-color: #fef2f2;
+  color: #991b1b;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.entry-dialog__submit {
+  font: inherit;
+  font-size: 12px;
+  background-color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  color: #ffffff;
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.entry-dialog__submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

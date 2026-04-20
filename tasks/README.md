@@ -31,7 +31,7 @@ Go 1.26 (stdlib `net/http.ServeMux` method-routing + `x/tools/go/packages` v0.44
 | T19 | Analyzing view (SSE) | T15, T17 | M | frontend/sse | [x] |
 | T20 | Cytoscape integration | T16, T17 | L | frontend/graph | [x] |
 | T21 | Filters panel | T20 | S | frontend/graph | [x] |
-| T22 | Entry-points + Info panels | T19, T20 | M | frontend/graph | [ ] |
+| T22 | Entry-points + Info panels | T19, T20 | M | frontend/graph | [x] |
 | T23 | Dead-code panel + modes | T16, T20 | M | frontend/graph | [ ] |
 | T24 | PNG/SVG export + aggregation | T20 | M | frontend/graph | [ ] |
 | T25 | Dockerfile multi-arch | T16, T24 | S | infra | [ ] |

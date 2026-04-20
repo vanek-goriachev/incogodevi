@@ -1,0 +1,42 @@
+/*
+ * Right-click context menu — design.md §4.
+ * Positioned absolutely above the Cytoscape canvas; the parent container
+ * (`.graph-canvas`) supplies the relative-positioned coordinate system.
+ */
+
+.context-menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-elevated);
+  min-width: 180px;
+  z-index: 20;
+}
+
+.context-menu__item {
+  display: block;
+  width: 100%;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--color-fg);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.context-menu__item:hover:not(:disabled) {
+  background-color: var(--color-bg);
+}
+
+.context-menu__item:disabled {
+  color: var(--color-fg-muted);
+  cursor: not-allowed;
+}

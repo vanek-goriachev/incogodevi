@@ -16,7 +16,8 @@ export type ProjectScopedField =
   | 'filters'
   | 'positions'
   | 'layout'
-  | 'dead-mode';
+  | 'dead-mode'
+  | 'collapsed';
 
 /** Build a per-project storage key, e.g. `go-viz:abcd:filters`. */
 export function projectKey(projectId: string, field: ProjectScopedField): string {
