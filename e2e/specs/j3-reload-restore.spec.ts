@@ -11,9 +11,17 @@ const evidenceDir = path.resolve(__dirname, '..', '..', 'test-evidence', 'T26', 
  * J3 — reload restoration.
  *
  * The Cytoscape positions are persisted in localStorage under
- * `go-viz:<id>:positions` (see web/src/storage/keys.ts). After a full reload
- * the SPA must fetch the cached graph and apply the same positions, so node
- * coordinates round-trip without observable jumps.
+ * `go-viz:<id>:positions` (see web/src/storage/keys.ts). The router has no
+ * URL deep-linking (web/src/app/Router.tsx), so a full reload always returns
+ * the user to Landing. The recent-projects list renders a "Restore" button
+ * for each cached project; clicking it calls `GET /api/projects/<id>/graph`
+ * and navigates to Main, where the persisted positions are re-applied via
+ * the `preset` Cytoscape layout.
+ *
+ * The spec snapshots node positions on the first run, reloads the page,
+ * clicks Restore on the just-uploaded project, and asserts positions
+ * round-trip within 1px (Cytoscape rounds when reading back a `preset`
+ * layout snapshot).
  */
 test.describe('J3 — reload restores graph and positions', () => {
   test('positions in localStorage survive a full reload', async ({ page }, testInfo) => {
@@ -72,8 +80,15 @@ test.describe('J3 — reload restores graph and positions', () => {
     // reload assertion is meaningless.
     const positionKey = Object.keys(baseline.keys).find((k) => k.endsWith(':positions'));
     expect(positionKey).toBeDefined();
+    const projectId = positionKey!.split(':')[1];
 
     await page.reload();
+    // Reload returns to Landing (no URL routing). Click Restore on the row
+    // for the project we just uploaded, then wait for Main to render.
+    await page.waitForSelector('[data-testid="screen-landing"]', { timeout: 30_000 });
+    await page
+      .locator(`[data-testid="landing-restore-${projectId}"]`)
+      .click();
     await page.waitForSelector('[data-testid="screen-main"]', { timeout: 30_000 });
     await waitForGraphReady(page);
 

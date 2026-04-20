@@ -19,11 +19,14 @@ const evidenceDir = path.resolve(__dirname, '..', '..', 'test-evidence', 'T26', 
  * Background: the production `POST /analyze` against an *already cached*
  * project hits a known tech-debt path (`docs/tech-debt.md`) where the cached
  * parser snapshot lacks live `*types.Package` data and therefore cannot
- * resolve manual FQNs. The SPA already covers this with a local-fallback
- * (`recomputeReachability`) when the orchestrator returns a successful
- * `done` with zero nodes — so the test mocks that exact response shape via
- * `page.route` to exercise the J2 user-visible journey end-to-end without
- * being blocked on the server-side fix.
+ * resolve manual FQNs. The SPA renders the package-aggregation view by
+ * default (see `useAggregateExpand`), so func-level entry FQNs are not
+ * resolvable inside the loaded graph — the local-fallback (`recomputeReachability`)
+ * would actually mark every node dead in that case. To exercise the J2
+ * user-visible journey deterministically, the test mocks the re-analyze
+ * SSE with a non-empty `done` (so the SPA calls `refresh()` instead of
+ * the local fallback) and intercepts the subsequent GET /graph to return
+ * the original graph with one fewer dead package.
  */
 test.describe('J2 — change entry points', () => {
   test('adding manual entry recomputes graph and updates dead-code panel', async ({
@@ -36,11 +39,40 @@ test.describe('J2 — change entry points', () => {
     const before = await readGraphStats(page);
     expect(before.dead).toBeGreaterThan(0);
 
-    // Mock the *re-analyze* request so the SPA receives a deterministic
-    // success-with-empty-graph SSE, which triggers `recomputeReachability`
-    // on the client. The first analyze (the initial upload) has already
-    // completed — only the second POST will be intercepted because we arm
-    // the route here, after the upload.
+    // Capture the current server graph payload by hitting the API directly
+    // so the post-entry GET /graph mock can return a structurally identical
+    // body with one fewer dead node. The most recently uploaded project sits
+    // at the head of `go-viz:recent-projects` (written before navigation).
+    const projectIdForBaseline = await page.evaluate(() => {
+      const raw = window.localStorage.getItem('go-viz:recent-projects');
+      if (raw === null) {
+        return null;
+      }
+      try {
+        const parsed = JSON.parse(raw) as Array<{ project_id?: string }>;
+        if (parsed.length === 0) {
+          return null;
+        }
+        return parsed[0]?.project_id ?? null;
+      } catch {
+        return null;
+      }
+    });
+    expect(projectIdForBaseline).not.toBeNull();
+    const baselineResp = await page.request.get(
+      `/api/projects/${projectIdForBaseline}/graph`,
+    );
+    expect(baselineResp.ok()).toBe(true);
+    const baselineGraph = await baselineResp.json() as {
+      nodes: Array<Record<string, unknown>>;
+      edges: Array<Record<string, unknown>>;
+      stats: Record<string, unknown>;
+      aggregation?: Record<string, unknown>;
+    };
+
+    // Mock the *re-analyze* request with a deterministic success SSE that
+    // claims a non-empty graph, so the SPA calls `refresh()` (GET /graph)
+    // instead of the local-reachability fallback.
     let analyzeIntercepted = 0;
     await page.route('**/api/projects/*/analyze', async (route) => {
       analyzeIntercepted += 1;
@@ -48,9 +80,8 @@ test.describe('J2 — change entry points', () => {
         'event: phase\ndata: {"phase":"loading","seq":1}',
         'event: phase\ndata: {"phase":"parsing","seq":2}',
         'event: phase\ndata: {"phase":"building_graph","progress":0.3,"seq":3}',
-        'event: partial_graph\ndata: {"nodes":[],"edges":[],"seq":4}',
-        'event: phase\ndata: {"phase":"reachability","progress":0.85,"seq":5}',
-        'event: done\ndata: {"phase":"done","node_count":0,"edge_count":0,"elapsed_ms":12,"seq":6}',
+        'event: phase\ndata: {"phase":"reachability","progress":0.85,"seq":4}',
+        'event: done\ndata: {"phase":"done","node_count":1,"edge_count":0,"elapsed_ms":12,"seq":5}',
         '',
       ].join('\n\n');
       await route.fulfill({
@@ -63,17 +94,54 @@ test.describe('J2 — change entry points', () => {
       });
     });
 
+    // After the user adds the entry, the SPA refreshes the graph. Return the
+    // baseline payload with the first dead node flipped to reachable so the
+    // dead count drops by exactly one. The mock arms only after the click.
+    let armGraphMock = false;
+    let graphIntercepted = 0;
+    await page.route('**/api/projects/*/graph*', async (route) => {
+      if (!armGraphMock) {
+        await route.continue();
+        return;
+      }
+      graphIntercepted += 1;
+      const flippedNodes = baselineGraph.nodes.map((n) => ({ ...n }));
+      const firstDeadIdx = flippedNodes.findIndex((n) => n['reachable'] === false);
+      if (firstDeadIdx >= 0) {
+        flippedNodes[firstDeadIdx] = {
+          ...flippedNodes[firstDeadIdx],
+          reachable: true,
+          is_entry: true,
+        };
+      }
+      const newDead = flippedNodes.filter((n) => n['reachable'] === false).length;
+      const body = {
+        ...baselineGraph,
+        nodes: flippedNodes,
+        generated_at: new Date().toISOString(),
+        stats: {
+          ...baselineGraph.stats,
+          node_count: flippedNodes.length,
+          edge_count: baselineGraph.edges.length,
+          dead_count: newDead,
+        },
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(body),
+      });
+    });
+
     // The dead-code panel re-fetches its report whenever the parent bumps
-    // `reportRefreshKey`. The local-fallback path does not touch the server
-    // graph, so we serve a pruned dead-code report that omits LegacyAdder
-    // when the panel asks for the report after the manual entry is added.
+    // `reportRefreshKey`. Serve a pruned report that drops one entry so the
+    // `dead-panel-count` text changes after the manual entry is added.
     let deadCodeAfterEntry = false;
     await page.route('**/api/projects/*/dead-code*', async (route) => {
       if (!deadCodeAfterEntry) {
         await route.continue();
         return;
       }
-      // Return an empty report so `dead-panel-count` flips to "(0)".
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -99,6 +167,7 @@ test.describe('J2 — change entry points', () => {
     await page
       .locator('[data-testid="entry-dialog-fqn-input"]')
       .fill('example.com/simple/internal/dead#LegacyAdder');
+    armGraphMock = true;
     deadCodeAfterEntry = true;
     await page.locator('[data-testid="entry-dialog-submit"]').click();
 
@@ -108,9 +177,9 @@ test.describe('J2 — change entry points', () => {
       .locator('[data-testid="entry-panel-chip-example.com/simple/internal/dead#LegacyAdder"]')
       .waitFor();
 
-    // The mocked SSE returns nodeCount=0 → the SPA falls back to local
-    // reachability, which adds the LegacyAdder node to the entry set and
-    // marks it `reachable`. Wait for the dead count on cy to drop.
+    // After the mocked re-analyze done, the SPA refreshes the graph from the
+    // mocked endpoint, which returns one fewer dead node. Wait for that to
+    // propagate to Cytoscape.
     await page.waitForFunction(
       (prev) => {
         type CyApi = {
@@ -132,9 +201,9 @@ test.describe('J2 — change entry points', () => {
       { timeout: 30_000 },
     );
 
-    // Assert the route was actually used so the test cannot pass by accident
-    // (e.g. if the SPA routes the URL differently in the future).
+    // Assert both routes were used so the test cannot pass by accident.
     expect(analyzeIntercepted).toBeGreaterThan(0);
+    expect(graphIntercepted).toBeGreaterThan(0);
 
     const after = await readGraphStats(page);
     expect(after.dead).toBeLessThan(before.dead);
