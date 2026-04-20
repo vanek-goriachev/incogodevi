@@ -1,5 +1,5 @@
 {
-  "$comment": "Upstream sources to clone+zip for E2E fixtures. See scripts/build-fixtures.sh.",
+  "$comment": "Upstream sources to clone+zip for E2E and demo fixtures. See scripts/build-fixtures.sh.",
   "fixtures": [
     {
       "name": "simple",
@@ -13,6 +13,13 @@
       "upstream_url": "https://github.com/go-chi/chi.git",
       "sha": "a54874f0e2f12647a19e82ee70dfa8185014100c",
       "zip_root": "chi"
+    },
+    {
+      "name": "demo-small",
+      "kind": "git",
+      "upstream_url": "https://github.com/urfave/cli.git",
+      "sha": "v2.27.5",
+      "zip_root": "cli"
     }
   ]
 }

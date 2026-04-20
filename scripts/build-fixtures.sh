@@ -103,7 +103,12 @@ while [ "$i" -lt "$count" ]; do
             fi
             if [ "$ok" -eq 1 ]; then
                 rm -rf "${tmp}/${zip_root}/.git"
-                (cd "$tmp" && zip -qr "$out" "$zip_root")
+                # Pack at the archive root (no leading directory) so the parser's
+                # `packages.Load("./...")` runs in the same directory that holds
+                # `go.mod`. With a leading directory the analyser reports
+                # `import_error: directory prefix . does not contain main module`
+                # and produces a single placeholder node.
+                (cd "${tmp}/${zip_root}" && zip -qr "$out" .)
                 echo "[fixtures] wrote $out ($(du -h "$out" | cut -f1))"
             fi
             rm -rf "$tmp"
