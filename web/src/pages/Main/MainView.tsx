@@ -7,6 +7,7 @@
  * dead-code report, T24 adds export actions.
  */
 
+import type { Core } from 'cytoscape';
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 
 import type { ApiClient } from '../../api/client';
@@ -15,8 +16,17 @@ import { useRouter } from '../../app/Router';
 import { useToast } from '../../app/Toasts';
 import { useTheme } from '../../app/theme';
 import { ANALYSIS_ERROR_MESSAGES } from '../../i18n/en';
+import { projectKey } from '../../storage/keys';
+import { useLocalStorage } from '../../storage/useLocalStorage';
 import { GraphCanvas } from './GraphCanvas';
 import { readThemeTokens, type ThemeTokens } from './graph-styles';
+import { FiltersPanel } from './panels/FiltersPanel';
+import {
+  defaultFilterSpec,
+  normalizeFilterSpec,
+  type FilterSpec,
+} from './panels/filterSpec';
+import { useFilters } from './useFilters';
 import { useGraphData } from './useGraphData';
 
 export interface MainViewProps {
@@ -34,6 +44,25 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
   const themeTokens = useThemeTokens(resolvedTheme);
   const { state, refresh } = useGraphData({ apiClient, projectId });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [cy, setCy] = useState<Core | null>(null);
+
+  // Per-project filter spec persisted to `go-viz:<id>:filters` (design.md §8).
+  // The fallback to a synthetic id keeps the hook stable when the project id
+  // is undefined (early renders before the router resolves).
+  const filtersStorageKey = projectKey(projectId ?? '__none__', 'filters');
+  const [storedFilters, setStoredFilters] = useLocalStorage<FilterSpec>(
+    filtersStorageKey,
+    defaultFilterSpec(),
+  );
+  const filterSpec = useMemo(() => normalizeFilterSpec(storedFilters), [storedFilters]);
+  const handleFilterChange = useCallback(
+    (next: FilterSpec) => {
+      setStoredFilters(next);
+    },
+    [setStoredFilters],
+  );
+
+  useFilters(cy, filterSpec);
 
   // Reset selection on project change so the right-rail placeholder does not
   // dangle on a stale id.
@@ -61,6 +90,10 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
 
   const handleSelectNode = useCallback((id: string | null) => {
     setSelectedNodeId(id);
+  }, []);
+
+  const handleCyReady = useCallback((next: Core | null) => {
+    setCy(next);
   }, []);
 
   const stats = state.graph?.stats;
@@ -107,9 +140,12 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
         leftRail={
           <div className="main-view__rail" data-testid="main-left-rail">
             <h3 className="main-view__rail-title">Entry points</h3>
-            <p className="main-view__rail-hint">Configured in T21\u2013T22.</p>
-            <h3 className="main-view__rail-title">Filters</h3>
-            <p className="main-view__rail-hint">Filter panel arrives in T21.</p>
+            <p className="main-view__rail-hint">Configured in T22.</p>
+            <FiltersPanel
+              graph={state.graph}
+              value={filterSpec}
+              onChange={handleFilterChange}
+            />
           </div>
         }
         rightRail={
@@ -133,6 +169,7 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
           loading={state.status === 'loading'}
           onSelectNode={handleSelectNode}
           selectedNodeId={selectedNodeId}
+          onCyReady={handleCyReady}
         />
       </Layout>
     </section>
