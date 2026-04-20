@@ -236,6 +236,9 @@ export function GraphCanvas({
         snap[n.id()] = { x: p.x, y: p.y };
       });
       positions.write(snap);
+      // Auto-fit so the freshly produced layout is fully visible. Skipped
+      // when the user has interacted with the graph to respect their pan/zoom.
+      cy.fit(undefined, 40);
     });
   }, [graph, positions, reducedMotion]);
 
@@ -493,16 +496,22 @@ function runLayout(
 
   pinEntryPoints(cy, graph);
 
+  const baseLayoutOpts = {
+    name: 'fcose',
+    randomize: true,
+    quality: 'proof',
+    nodeRepulsion: 12000,
+    idealEdgeLength: 180,
+    nodeSeparation: 80,
+    padding: 40,
+    packComponents: true,
+    nodeDimensionsIncludeLabels: true,
+    tile: true,
+    fit: true,
+  };
   const layoutOpts: LayoutOptions = reducedMotion
-    ? ({ name: 'fcose', animate: false, randomize: true, nodeRepulsion: 4500, idealEdgeLength: 80 } as unknown as LayoutOptions)
-    : ({
-        name: 'fcose',
-        animate: 'end',
-        animationDuration: 400,
-        randomize: true,
-        nodeRepulsion: 4500,
-        idealEdgeLength: 80,
-      } as unknown as LayoutOptions);
+    ? ({ ...baseLayoutOpts, animate: false } as unknown as LayoutOptions)
+    : ({ ...baseLayoutOpts, animate: 'end', animationDuration: 400 } as unknown as LayoutOptions);
   cy.layout(layoutOpts).run();
 }
 
