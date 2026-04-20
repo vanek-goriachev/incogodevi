@@ -1,0 +1,72 @@
+/*
+ * Right-rail "Export" panel — sits at the bottom of the right column on the
+ * Main view (design.md §3.3 wireframe). Visual language matches the other
+ * panels in the rail.
+ */
+
+.export-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.export-panel__title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-fg-muted);
+  margin: 0;
+}
+
+.export-panel__buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.export-panel__action {
+  flex: 1;
+  font: inherit;
+  font-size: 12px;
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  color: var(--color-fg);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.export-panel__action:hover:not(:disabled) {
+  background-color: var(--color-bg);
+}
+
+.export-panel__action:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.export-panel__spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  animation: export-panel-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .export-panel__spinner {
+    animation: none;
+  }
+}
+
+@keyframes export-panel-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

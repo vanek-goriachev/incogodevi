@@ -33,7 +33,7 @@ Go 1.26 (stdlib `net/http.ServeMux` method-routing + `x/tools/go/packages` v0.44
 | T21 | Filters panel | T20 | S | frontend/graph | [x] |
 | T22 | Entry-points + Info panels | T19, T20 | M | frontend/graph | [x] |
 | T23 | Dead-code panel + modes | T16, T20 | M | frontend/graph | [x] |
-| T24 | PNG/SVG export + aggregation | T20 | M | frontend/graph | [ ] |
+| T24 | PNG/SVG export + aggregation | T20 | M | frontend/graph | [x] |
 | T25 | Dockerfile multi-arch | T16, T24 | S | infra | [ ] |
 | T26 | E2E Playwright suite | T25 | L | test | [ ] |
 | T27 | Demo projects + walkthrough | T26 | S | demo | [ ] |
@@ -150,7 +150,7 @@ graph TD
 - [x] T21 Filters panel
 - [x] T22 Entry-points + Info panels
 - [x] T23 Dead-code panel + modes
-- [ ] T24 PNG/SVG export + aggregation
+- [x] T24 PNG/SVG export + aggregation
 - [ ] T25 Dockerfile multi-arch
 - [ ] T26 E2E Playwright suite
 - [ ] T27 Demo projects + walkthrough

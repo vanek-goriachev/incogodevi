@@ -52,6 +52,7 @@ import { readThemeTokens, type ThemeTokens } from './graph-styles';
 import { recomputeReachability } from './localReachability';
 import { DeadCodePanel } from './panels/DeadCodePanel';
 import { EntryPointsPanel } from './panels/EntryPointsPanel';
+import { ExportPanel } from './panels/ExportPanel';
 import { FiltersPanel } from './panels/FiltersPanel';
 import {
   defaultFilterSpec,
@@ -59,6 +60,7 @@ import {
   type FilterSpec,
 } from './panels/filterSpec';
 import { InfoPanel } from './panels/InfoPanel';
+import { useAggregateExpand } from './useAggregateExpand';
 import { useCollapse } from './useCollapse';
 import { useDeadMode } from './useDeadMode';
 import { useFilters } from './useFilters';
@@ -173,6 +175,35 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
 
   const collapse = useCollapse(cy, projectId);
   const deadMode = useDeadMode(projectId, cy);
+
+  const handleExpandError = useCallback(
+    (message: string) => {
+      showToast(message, 'error');
+    },
+    [showToast],
+  );
+  const handleExpandInfo = useCallback(
+    (message: string) => {
+      showToast(message, 'info');
+    },
+    [showToast],
+  );
+  useAggregateExpand({
+    apiClient,
+    projectId,
+    cy,
+    aggregation: effectiveGraph?.aggregation,
+    reducedMotion,
+    onError: handleExpandError,
+    onInfo: handleExpandInfo,
+  });
+
+  const handleExportError = useCallback(
+    (message: string) => {
+      showToast(message, 'error');
+    },
+    [showToast],
+  );
 
   // Bumped after every successful graph refresh / re-analyze so the
   // DeadCodePanel knows to re-fetch its report. The graph snapshot itself
@@ -372,6 +403,12 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
               cy={cy}
               graph={effectiveGraph}
               onSelectNode={handleSelectNode}
+            />
+            <ExportPanel
+              cy={cy}
+              projectName={projectName}
+              backgroundColor={themeTokens.bg}
+              onError={handleExportError}
             />
           </div>
         }

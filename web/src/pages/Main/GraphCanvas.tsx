@@ -408,16 +408,17 @@ function syncElements(cy: Core, graph: Graph, persisted: PositionMap): void {
 
     const additions: ElementDefinition[] = [];
     for (const node of wantNodes.values()) {
+      const data = enrichNodeData(node);
       const existing = cy.$id(node.id);
       if (existing.nonempty()) {
-        existing.data(node as unknown as Record<string, unknown>);
+        existing.data(data);
         toggleClass(existing, 'dead', !node.reachable);
         toggleClass(existing, 'entry', node.is_entry);
         continue;
       }
       const def: ElementDefinition = {
         group: 'nodes',
-        data: node as unknown as Record<string, unknown>,
+        data,
         classes: classesFor(node),
       };
       const persistedPos = persisted[node.id];
@@ -441,6 +442,19 @@ function syncElements(cy: Core, graph: Graph, persisted: PositionMap): void {
       cy.add(additions);
     }
   });
+}
+
+/**
+ * Mirror the API node into the shape Cytoscape stores on an element. The
+ * only enrichment is `display_label`, which the package-aggregated stylesheet
+ * reads when `child_count` is present so the badge reads `<name> (count)`.
+ */
+function enrichNodeData(node: Node): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(node as unknown as Record<string, unknown>) };
+  if (node.kind === 'package' && typeof node.child_count === 'number' && node.child_count > 0) {
+    out['display_label'] = `${node.name} (${String(node.child_count)})`;
+  }
+  return out;
 }
 
 /** Compute the list of CSS classes attached to a node. */

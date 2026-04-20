@@ -1,0 +1,25 @@
+T24 E2E run starting
+  fixtures: /Users/isegoryachev/Desktop/University/course_project/code_v2/project/web/e2e/fixtures
+  artifacts: /Users/isegoryachev/Desktop/University/course_project/code_v2/project/test-evidence/T24/artifacts
+J1: small fixture -> Export PNG -> downloaded blob is a valid PNG
+  cy summary: {'nodes': 1, 'edges': 0, 'packages': 1, 'packageIds': ['./...'], 'packageInfo': [{'package': './...', 'child_count': 0}]}
+  screenshot: j1-01-before-png-export.png
+  captured downloads: count=1 entries=[('example.com_simple-graph-20260420-063357.png', 47799, 'image/png')]
+  saved artefact: T24/artifacts/example.com_simple-graph-20260420-063357.png (47799 bytes)
+  screenshot: j1-02-after-png-export.png
+  -> PASS: scenario_j1_export_png
+J2: forced aggregation -> double-click package node -> sub-graph appears
+  initial cy summary: {'nodes': 4, 'edges': 4, 'packages': 4, 'packageIds': ['example.com/multi', 'example.com/multi/api', 'example.com/multi/config', 'example.com/multi/util'], 'packageInfo': [{'package': 'example.com/multi', 'child_count': 1}, {'package': 'example.com/multi/api', 'child_count': 14}, {'package': 'example.com/multi/config', 'child_count': 6}, {'package': 'example.com/multi/util', 'child_count': 3}]}
+  target package: example.com/multi/api (child_count=14)
+  screenshot: j2-01-aggregated-view.png
+  cy summary after expand: {'nodes': 17, 'edges': 14, 'packages': 3, 'packageIds': ['example.com/multi', 'example.com/multi/config', 'example.com/multi/util'], 'packageInfo': [{'package': 'example.com/multi', 'child_count': 1}, {'package': 'example.com/multi/config', 'child_count': 6}, {'package': 'example.com/multi/util', 'child_count': 3}]}
+  detail nodes for example.com/multi/api: 14
+  screenshot: j2-02-after-expand.png
+  -> PASS: scenario_j2_aggregate_expand
+J3: small fixture -> Export SVG -> downloaded blob is a valid SVG
+  captured downloads: count=1 entries=[('example.com_simple-graph-20260420-063359.svg', 703, 'image/svg+xml')]
+  saved artefact: T24/artifacts/example.com_simple-graph-20260420-063359.svg (703 chars)
+  screenshot: j3-01-after-svg-export.png
+  -> PASS: scenario_j3_export_svg
+T24 E2E elapsed: 3.7s
+T24 E2E run SUCCESS
