@@ -16,3 +16,12 @@ export {
   NODE_KIND_ORDER,
 } from './graph-styles';
 export type { ThemeTokens, NodeKindStyle, EdgeKindStyle } from './graph-styles';
+export { FiltersPanel, FIND_DEBOUNCE_MS, PACKAGE_SEARCH_THRESHOLD } from './panels/FiltersPanel';
+export type { FiltersPanelProps } from './panels/FiltersPanel';
+export {
+  defaultFilterSpec,
+  normalizeFilterSpec,
+  filterSpecEqual,
+} from './panels/filterSpec';
+export type { FilterSpec, KindVisibility } from './panels/filterSpec';
+export { applyFilters, ensureFilterStyleRules, useFilters } from './useFilters';

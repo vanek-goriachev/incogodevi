@@ -84,6 +84,13 @@ export interface GraphCanvasProps {
    * because jsdom does not implement `HTMLCanvasElement.getContext('2d')`.
    */
   rendererOverride?: { name: string } | null;
+  /**
+   * Invoked once the Cytoscape `Core` instance is mounted, and again with
+   * `null` on unmount. Lets parent components (e.g. the filter panel) feed
+   * imperative side effects through the live graph without resorting to
+   * DOM-level peek at `_cyreg`.
+   */
+  onCyReady?: (cy: Core | null) => void;
 }
 
 /**
@@ -99,6 +106,7 @@ export function GraphCanvas({
   onSelectNode,
   selectedNodeId = null,
   rendererOverride = null,
+  onCyReady,
 }: GraphCanvasProps): JSX.Element {
   ensureFcoseRegistered();
 
@@ -141,12 +149,20 @@ export function GraphCanvas({
     }
     const cy = cytoscape(cyOptions);
     cyRef.current = cy;
+    if (onCyReady !== undefined) {
+      onCyReady(cy);
+    }
 
     return () => {
+      if (onCyReady !== undefined) {
+        onCyReady(null);
+      }
       cy.destroy();
       cyRef.current = null;
     };
-    // Theme is intentionally excluded — see theme effect below.
+    // Theme is intentionally excluded — see theme effect below. `onCyReady`
+    // is also excluded because consumers wrap it in `useCallback`; re-mounting
+    // Cytoscape on every callback identity change would defeat its purpose.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

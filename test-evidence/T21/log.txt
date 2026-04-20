@@ -1,0 +1,26 @@
+T21 E2E run starting
+  fixtures: /Users/isegoryachev/Desktop/University/course_project/code_v2/project/web/e2e/fixtures
+J1: toggle a kind off and verify nodes hide within the NFR-03 budget
+  cy state before: {'nodes': 28, 'edges': 45, 'hidden': 0, 'match': 0, 'dim': 0}
+  screenshot: j1-01-panel-default.png
+  kind counts in graph: {'package': 4, 'func': 5, 'const': 2, 'struct': 5, 'method': 4, 'var': 3, 'interface': 1, 'field': 4}
+  toggling kind 'var'
+  toggle round-trip: 102.1 ms (NFR-03 budget: 100 ms; loose 250 ms)
+  cy state after: {'nodes': 28, 'edges': 45, 'hidden': 3, 'match': 0, 'dim': 0}
+  hidden var nodes after toggle: 3
+  screenshot: j1-02-var-hidden.png
+  -> PASS: scenario_j1_kind_toggle
+J2: type 'Handler' into find, verify highlight, then Esc clears it
+  cy state with find='Handler': {'nodes': 28, 'edges': 45, 'hidden': 0, 'match': 3, 'dim': 25}
+  screenshot: j2-01-find-handler.png
+  cy state after Esc: {'nodes': 28, 'edges': 45, 'hidden': 0, 'match': 0, 'dim': 0}
+  screenshot: j2-02-after-escape.png
+  -> PASS: scenario_j2_find_highlight
+J3: toggle a kind off, reload via recent projects, verify persisted
+  kind counts in graph: {'package': 4, 'func': 5, 'const': 2, 'struct': 5, 'method': 4, 'var': 3, 'interface': 1, 'field': 4}
+  toggling var off
+  persisted filters payload: {"v":1,"kinds":{"package":true,"struct":true,"interface":true,"func":true,"method":true,"field":true,"var":false,"const":true},"packages":{"mode":"all","selected":[]},"find":""}
+  after reload var.checked = False
+  screenshot: j3-01-restored.png
+  -> PASS: scenario_j3_persist_filters
+T21 E2E run SUCCESS
