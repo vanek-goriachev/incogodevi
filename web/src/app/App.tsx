@@ -15,13 +15,13 @@
 import { useCallback, useMemo, type JSX } from 'react';
 
 import { ErrorBoundary } from './ErrorBoundary';
-import { Layout } from './Layout';
 import { RouteSwitch, Router, useRouter } from './Router';
 import { ThemeProvider, useTheme, type ThemeChoice } from './theme';
 import { ToastProvider } from './Toasts';
 import { ApiClient } from '../api/client';
 import { AnalyzingView } from '../pages/Analyzing';
 import { Landing } from '../pages/Landing/Landing';
+import { MainView } from '../pages/Main';
 
 const apiClient = new ApiClient();
 
@@ -50,7 +50,7 @@ function Shell(): JSX.Element {
     () => ({
       landing: <Landing apiClient={apiClient} />,
       analyzing: <AnalyzingView apiClient={apiClient} />,
-      main: <MainPlaceholder />,
+      main: <MainView apiClient={apiClient} />,
       error: <ErrorPlaceholder />,
     }),
     [],
@@ -115,25 +115,6 @@ function TopBar(): JSX.Element {
         </select>
       </label>
     </header>
-  );
-}
-
-function MainPlaceholder(): JSX.Element {
-  const { state } = useRouter();
-  const title =
-    state.projectName !== undefined && state.projectName !== ''
-      ? state.projectName
-      : 'Project info';
-  return (
-    <section className="screen screen--main" data-testid="screen-main">
-      <Layout
-        topBar={<strong data-testid="main-project-name">{title}</strong>}
-        leftRail={<small>Entry points · Filters</small>}
-        rightRail={<small>Info · Dead code · Export</small>}
-      >
-        <p>Cytoscape canvas mounts here in T20.</p>
-      </Layout>
-    </section>
   );
 }
 

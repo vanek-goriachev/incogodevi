@@ -1,0 +1,49 @@
+T20 E2E run starting
+  fixtures: /Users/isegoryachev/Desktop/University/course_project/code_v2/project/web/e2e/fixtures
+J1: upload simple.zip and verify Cytoscape canvas mounts
+  console[warning]: You have set a custom wheel sensitivity.  This will make your app zoom unnaturally when using mainstream mice.  You should change this value from the default only if you can guarantee that all your users will use the same hardware and OS configuration as your current machine.
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: You have set a custom wheel sensitivity.  This will make your app zoom unnaturally when using mainstream mice.  You should change this value from the default only if you can guarantee that all your users will use the same hardware and OS configuration as your current machine.
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  screenshot: j1-01-main-graph.png
+  headline: 'example.com/simple · 1 nodes · 1 dead'
+  aria-label: 'Dependency graph, 1 nodes, 0 edges'
+  cytoscape state: {'nodes': 1, 'edges': 0, 'dead': 1, 'entry': 0}
+  -> PASS: scenario_j1_render
+J2: zoom, drag, and fit hotkey
+  console[warning]: You have set a custom wheel sensitivity.  This will make your app zoom unnaturally when using mainstream mice.  You should change this value from the default only if you can guarantee that all your users will use the same hardware and OS configuration as your current machine.
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: You have set a custom wheel sensitivity.  This will make your app zoom unnaturally when using mainstream mice.  You should change this value from the default only if you can guarantee that all your users will use the same hardware and OS configuration as your current machine.
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  zoom: 1.160 -> 2.657
+  screenshot: j2-01-after-zoom.png
+  drag result: {'id': '6cbb7c84e0590fe9', 'before': {'x': 0, 'y': 0}, 'after': {'x': 80, 'y': 60}}
+  persisted positions[…0:120]: {"6cbb7c84e0590fe9":{"x":80,"y":60}}
+  screenshot: j2-02-after-fit.png
+  -> PASS: scenario_j2_zoom_and_drag
+J3: drag a node, reload, verify position persisted
+  console[warning]: You have set a custom wheel sensitivity.  This will make your app zoom unnaturally when using mainstream mice.  You should change this value from the default only if you can guarantee that all your users will use the same hardware and OS configuration as your current machine.
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: You have set a custom wheel sensitivity.  This will make your app zoom unnaturally when using mainstream mice.  You should change this value from the default only if you can guarantee that all your users will use the same hardware and OS configuration as your current machine.
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  moved: {'id': '6cbb7c84e0590fe9', 'pos': {'x': 600, 'y': 220}}
+  console[warning]: You have set a custom wheel sensitivity.  This will make your app zoom unnaturally when using mainstream mice.  You should change this value from the default only if you can guarantee that all your users will use the same hardware and OS configuration as your current machine.
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: You have set a custom wheel sensitivity.  This will make your app zoom unnaturally when using mainstream mice.  You should change this value from the default only if you can guarantee that all your users will use the same hardware and OS configuration as your current machine.
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  console[warning]: The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+  after reload position: {'x': 600, 'y': 220}
+  screenshot: j3-01-restored.png
+  -> PASS: scenario_j3_positions_restored
+T20 E2E run SUCCESS
