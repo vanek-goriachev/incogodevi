@@ -1,0 +1,160 @@
+/*
+ * Filter panel styling — sits in the left rail of the Main view.
+ * Follows the visual language of the rest of the SPA (design.md §3.3, §5.5);
+ * tokens come from `styles/tokens.css`.
+ */
+
+.filters-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.filters-panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.filters-panel__title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-fg-muted);
+  margin: 0;
+}
+
+.filters-panel__reset {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg);
+  padding: 2px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.filters-panel__reset:hover {
+  background-color: var(--color-bg-elevated);
+}
+
+.filters-panel__reset--inline {
+  margin: 4px 0;
+  align-self: flex-start;
+}
+
+.filters-panel__group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.filters-panel__legend {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-fg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  cursor: default;
+}
+
+details > summary.filters-panel__legend {
+  cursor: pointer;
+  list-style: revert;
+}
+
+.filters-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.filters-panel__row input[type='checkbox'] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.filters-panel__row--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.filters-panel__row--disabled input[type='checkbox'] {
+  cursor: not-allowed;
+}
+
+.filters-panel__swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border-style: solid;
+  border-width: 1.5px;
+  flex: 0 0 12px;
+}
+
+.filters-panel__row-label {
+  flex: 1;
+  color: var(--color-fg);
+}
+
+.filters-panel__row-label--mono {
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.filters-panel__row-count {
+  color: var(--color-fg-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+
+.filters-panel__pkg-search,
+.filters-panel__find {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  font: inherit;
+}
+
+.filters-panel__pkg-search:focus-visible,
+.filters-panel__find:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.filters-panel__pkg-list {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.filters-panel__hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-fg-muted);
+}
+
+.filters-panel__hint kbd {
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
