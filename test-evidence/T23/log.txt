@@ -1,0 +1,29 @@
+T23 E2E run starting
+  fixtures: /Users/isegoryachev/Desktop/University/course_project/code_v2/project/web/e2e/fixtures
+J1: dead-code panel populated, TXT export triggers a download
+  cy state: {'nodes': 15, 'edges': 21, 'dead': 7, 'hideDead': 0, 'hideLive': 0, 'container_mode': 'live-dead'}
+  header count text: ' (6)'
+  panel row count: 6
+  panel fqns (first 5): ['example.com/deadcase/dead.Lonely', 'example.com/deadcase/dead.helper', 'example.com/deadcase/dead.Unused', 'example.com/deadcase/dead.Forgotten', 'example.com/deadcase/dead.Forgotten.Name']
+  screenshot: j1-01-panel-populated.png
+  captured downloads: [{'download': 'example.com_deadcase-dead-code-20260420-060704.txt', 'href': 'blob:http://localhost:5173/701dde49-aa1d-4eb4-a6d5-3a85fdb9a289'}, {'download': 'example.com_deadcase-dead-code-20260420-060704.txt', 'href': 'blob:http://localhost:5173/701dde49-aa1d-4eb4-a6d5-3a85fdb9a289'}]
+  screenshot: j1-02-after-txt-export.png
+  -> PASS: scenario_j1_panel_and_export
+J2: 'd' hotkey cycles dead-mode + class toggles propagate to cytoscape
+  initial cy state: {'nodes': 15, 'edges': 21, 'dead': 7, 'hideDead': 0, 'hideLive': 0, 'container_mode': 'live-dead'}
+  switcher active option(s): ['dead-mode-option-live-dead']
+  screenshot: j2-01-mode-default.png
+  after press 1 (dead-only): {'nodes': 15, 'edges': 21, 'dead': 7, 'hideDead': 0, 'hideLive': 21, 'container_mode': 'dead-only'}
+  screenshot: j2-02-mode-dead-only.png
+  after press 2 (live-only): {'nodes': 15, 'edges': 21, 'dead': 7, 'hideDead': 15, 'hideLive': 0, 'container_mode': 'live-only'}
+  screenshot: j2-03-mode-live-only.png
+  after press 3 (live-dead): {'nodes': 15, 'edges': 21, 'dead': 7, 'hideDead': 0, 'hideLive': 0, 'container_mode': 'live-dead'}
+  -> PASS: scenario_j2_hotkey_cycles_modes
+J3: clicking a dead-code row centres the viewport and selects the node
+  clicking row fqn: example.com/deadcase/dead.Lonely
+  info-panel-name count after click: 1
+  cy selected: {'selectedCount': 1, 'selectedName': 'Lonely', 'selectedKind': 'func'}
+  screenshot: j3-01-row-clicked.png
+  -> PASS: scenario_j3_row_click_centres_and_selects
+T23 E2E elapsed: 4.2s
+T23 E2E run SUCCESS

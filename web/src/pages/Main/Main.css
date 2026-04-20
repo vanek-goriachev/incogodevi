@@ -31,6 +31,39 @@
   gap: 16px;
 }
 
+.dead-mode-switcher {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.dead-mode-switcher__option {
+  font: inherit;
+  font-size: 12px;
+  background-color: transparent;
+  color: var(--color-fg-muted);
+  border: none;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-right: 1px solid var(--color-border);
+}
+
+.dead-mode-switcher__option:last-child {
+  border-right: none;
+}
+
+.dead-mode-switcher__option:hover:not(.dead-mode-switcher__option--active) {
+  background-color: var(--color-bg-elevated);
+  color: var(--color-fg);
+}
+
+.dead-mode-switcher__option--active {
+  background-color: var(--color-accent);
+  color: var(--color-accent-fg);
+  cursor: default;
+}
+
 .main-view__refresh {
   margin-left: auto;
   background: transparent;
