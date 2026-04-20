@@ -29,7 +29,7 @@ Go 1.26 (stdlib `net/http.ServeMux` method-routing + `x/tools/go/packages` v0.44
 | T17 | Frontend app shell | T02 | M | frontend/core | [x] |
 | T18 | Landing + upload | T14, T17 | M | frontend/upload | [x] |
 | T19 | Analyzing view (SSE) | T15, T17 | M | frontend/sse | [x] |
-| T20 | Cytoscape integration | T16, T17 | L | frontend/graph | [ ] |
+| T20 | Cytoscape integration | T16, T17 | L | frontend/graph | [x] |
 | T21 | Filters panel | T20 | S | frontend/graph | [ ] |
 | T22 | Entry-points + Info panels | T19, T20 | M | frontend/graph | [ ] |
 | T23 | Dead-code panel + modes | T16, T20 | M | frontend/graph | [ ] |

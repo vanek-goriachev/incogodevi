@@ -6,6 +6,7 @@ import './styles/tokens.css';
 import './styles/app.css';
 import './pages/Landing/Landing.css';
 import './pages/Analyzing/Analyzing.css';
+import './pages/Main/Main.css';
 
 const container = document.getElementById('root');
 if (!container) {
