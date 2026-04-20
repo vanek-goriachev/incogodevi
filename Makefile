@@ -12,7 +12,8 @@ VERSION  ?= dev
 PLATFORMS ?= linux/amd64,linux/arm64
 
 .PHONY: all lint test build run tidy clean help \
-        docker-build docker-build-local docker-run
+        docker-build docker-build-local docker-run \
+        e2e e2e-fixtures e2e-install
 
 all: lint test build
 
@@ -59,6 +60,19 @@ docker-build-local:
 ## docker-run: run the locally built image on port 8080
 docker-run:
 	docker run --rm -p 8080:8080 $(IMAGE):$(VERSION)
+
+## e2e-install: install Playwright npm deps and browsers (chromium + webkit)
+e2e-install:
+	cd e2e && npm install --no-audit --no-fund
+	cd e2e && npx playwright install chromium webkit
+
+## e2e-fixtures: build the fixture archives declared in e2e/fixtures/manifest.json
+e2e-fixtures:
+	./scripts/build-fixtures.sh
+
+## e2e: run the Playwright suite against $(BASE_URL) (default http://localhost:8080)
+e2e: e2e-fixtures
+	cd e2e && BASE_URL=$${BASE_URL:-http://localhost:8080} npx playwright test
 
 ## help: list available targets
 help:

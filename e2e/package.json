@@ -1,0 +1,23 @@
+{
+  "name": "go-deps-visualizer-e2e",
+  "private": true,
+  "version": "0.0.1",
+  "description": "End-to-end Playwright suite for the Go Dependencies Visualizer.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "playwright test",
+    "test:chromium": "playwright test --project=chromium",
+    "test:webkit": "playwright test --project=webkit",
+    "report": "playwright show-report",
+    "fixtures": "../scripts/build-fixtures.sh",
+    "fixtures:force": "../scripts/build-fixtures.sh --force"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.59.1",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

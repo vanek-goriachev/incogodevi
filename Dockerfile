@@ -71,11 +71,29 @@ RUN go build \
         ./cmd/server
 
 # ---------- Stage 3: runtime --------------------------------------------------
-# distroless/static-debian12:nonroot is the default tag as of 2026-04-19
-# (see architecture.md ADR-04). It ships ca-certificates, /tmp and a
-# nonroot user (uid/gid 65532) — exactly what we need for a CGO-disabled
-# Go binary that writes its disk cache under /tmp.
-FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+# We need the Go toolchain at runtime: the parser uses
+# `golang.org/x/tools/go/packages` which shells out to `go list` / `go env`
+# to resolve module paths and load type information for uploaded projects
+# (see architecture.md ADR-02). The original ADR-04 design used distroless
+# but that base image ships no `go` binary — analyses fail with
+# `parser: packages.Load: err: go command required, not found`. Using
+# golang:1.26-alpine keeps the image small (~280 MB vs distroless ~15 MB,
+# but still much smaller than a full Debian) and bundles a matching toolchain.
+# Tracked in docs/tech-debt.md ("dockerfile: distroless lacks go toolchain").
+FROM golang:1.26-alpine AS runtime
+
+# ca-certificates lets the toolchain resolve modules over HTTPS when an
+# uploaded project pulls a non-vendored dependency.
+RUN apk add --no-cache ca-certificates \
+    && addgroup -S -g 65532 nonroot \
+    && adduser -S -u 65532 -G nonroot nonroot \
+    && mkdir -p /home/nonroot /tmp/go-viz-cache \
+    && chown -R nonroot:nonroot /home/nonroot /tmp/go-viz-cache
+
+ENV HOME=/home/nonroot \
+    GOCACHE=/home/nonroot/.cache/go-build \
+    GOMODCACHE=/home/nonroot/go/pkg/mod \
+    GOTOOLCHAIN=local
 
 COPY --from=backend /out/server /server
 

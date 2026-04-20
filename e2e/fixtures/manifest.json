@@ -1,0 +1,18 @@
+{
+  "$comment": "Upstream sources to clone+zip for E2E fixtures. See scripts/build-fixtures.sh.",
+  "fixtures": [
+    {
+      "name": "simple",
+      "kind": "local",
+      "source_dir": "e2e/fixtures/simple",
+      "zip_root": "simple"
+    },
+    {
+      "name": "medium",
+      "kind": "git",
+      "upstream_url": "https://github.com/go-chi/chi.git",
+      "sha": "a54874f0e2f12647a19e82ee70dfa8185014100c",
+      "zip_root": "chi"
+    }
+  ]
+}

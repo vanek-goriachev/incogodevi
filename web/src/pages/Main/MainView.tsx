@@ -276,6 +276,15 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
 
   const handleCyReady = useCallback((next: Core | null) => {
     setCy(next);
+    // E2E hook: expose the live Cytoscape instance on `window.__cy` so the
+    // Playwright suite can read graph stats (node/edge counts, reachability)
+    // without depending on internal React state. The hook is a no-op when the
+    // app is rendered outside a browser context (SSR, vitest+jsdom). It is
+    // intentionally always on — no production secret leaks through it and the
+    // Cytoscape API surface is already public via DOM events.
+    if (typeof window !== 'undefined') {
+      (window as unknown as { __cy: Core | null }).__cy = next;
+    }
   }, []);
 
   const handleAddEntryFromInfo = useCallback(

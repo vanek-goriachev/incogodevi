@@ -37,9 +37,23 @@ The image is built from a three-stage `Dockerfile`:
 
 1. `node:24-alpine` builds the Vite SPA into `web/dist`.
 2. `golang:1.26-alpine` copies it into `server/internal/web/dist`, then compiles the server with `CGO_ENABLED=0 -trimpath -ldflags "-s -w -X main.version=..."`.
-3. `gcr.io/distroless/static-debian12:nonroot` is the runtime — no shell, runs as uid 65532, ~15 MB total.
+3. `golang:1.26-alpine` is the runtime — runs as uid 65532, ~280 MB total. The toolchain is required at runtime because `golang.org/x/tools/go/packages` (ADR-02) shells out to `go list` / `go env` while parsing uploaded projects; see `docs/tech-debt.md` for the original distroless attempt.
 
 Reproducibility: `-trimpath` plus pinned base images mean two consecutive builds of the same commit produce byte-identical binaries (the image digests will still differ because of build timestamps in the OCI manifest).
+
+## End-to-end tests
+
+The Playwright suite under `e2e/` covers user journeys J1-J4 and NFR-02/03/09 against the production Docker image. It runs Chromium and WebKit. One-time setup installs npm dependencies and browsers, then builds the fixture archives:
+
+```bash
+make e2e-install                                   # install Playwright + browsers
+make e2e-fixtures                                  # build e2e/fixtures/.cache/*.zip
+docker run --rm -d -p 8080:8080 --name go-viz go-viz:dev
+make e2e                                           # runs the suite against http://localhost:8080
+docker stop go-viz
+```
+
+Override the target with `BASE_URL=http://localhost:5173 make e2e` to run against a Vite dev server. Screenshots, downloads and per-spec logs land in `test-evidence/T26/`.
 
 ## Development
 

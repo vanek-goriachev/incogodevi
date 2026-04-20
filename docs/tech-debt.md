@@ -30,6 +30,23 @@ the symptom and the recommended follow-up.
 
 ## Resolved
 
+### dockerfile: distroless runtime lacks go toolchain
+
+- **Where:** `Dockerfile` runtime stage (was `gcr.io/distroless/static-debian12`).
+- **Symptom:** Every analysis ran inside the container failed with
+  `parser: packages.Load: err: go command required, not found: exec: "go": executable file not found in $PATH`.
+  The error surfaced as the "Analysis failed" screen on Landing → upload.
+- **Discovered by:** T26 (2026-04-20) end-to-end run against the Docker image
+  rebuilt from T25 commit.
+- **Resolved by:** T26 (2026-04-20). Switched the runtime base image to
+  `golang:1.26-alpine` so `golang.org/x/tools/go/packages.Load` (ADR-02)
+  has the `go` toolchain it requires. Added a non-root user, a writable
+  `GOCACHE` / `GOMODCACHE` under `/home/nonroot`, `GOTOOLCHAIN=local`, and
+  a pre-created `/tmp/go-viz-cache` directory. Image grew from ~15 MB
+  (distroless) to ~280 MB (alpine + Go), accepted as the cost of running
+  the analyzer end-to-end. ADR-04 should be updated when the architecture
+  doc is next revisited.
+
 ### graph: addCallsAndReferences crashes on FuncDecl without Body
 
 - **Where:** `server/internal/graph/ast_calls.go` (the `*ast.FuncDecl` and
