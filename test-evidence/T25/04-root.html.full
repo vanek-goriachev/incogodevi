@@ -1,0 +1,21 @@
+HTTP/1.1 200 OK
+Accept-Ranges: bytes
+Content-Length: 518
+Content-Type: text/html; charset=utf-8
+X-Request-Id: 0e679e062888697d
+Date: Mon, 20 Apr 2026 03:47:11 GMT
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Static analysis and dependency graph visualizer for Go projects." />
+    <title>Go Dependencies Visualizer</title>
+    <script type="module" crossorigin src="/assets/index-vtX1CeN8.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Braqu65r.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
