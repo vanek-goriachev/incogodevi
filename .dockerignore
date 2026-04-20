@@ -1,0 +1,43 @@
+# Reduce build context (faster uploads, fewer cache busts) and avoid leaking
+# repo bookkeeping into the image. Anything explicitly required by the
+# Dockerfile (server/, web/, etc.) must NOT be excluded here.
+
+# VCS / CI / docs
+.git
+.github
+.gitignore
+.gitattributes
+.golangci.yml
+LICENSE
+README.md
+docs
+tasks
+test-evidence
+prompts
+
+# Editor / OS noise
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+
+# Build artefacts and caches
+**/node_modules
+**/dist
+**/coverage
+**/coverage.out
+**/coverage.html
+server/bin
+.cache
+
+# Frontend dev-only trees that are not needed for the production bundle.
+web/e2e
+
+# Secrets / local env
+.env
+.env.local
+*.log
+
+# This file itself
+.dockerignore
+Dockerfile
