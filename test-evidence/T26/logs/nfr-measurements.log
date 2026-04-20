@@ -1,0 +1,16 @@
+2026-04-20T07:52:56.894Z NFR-01 chromium fixture=medium elapsed_ms=506
+2026-04-20T07:53:14.388Z NFR-02 chromium elapsed_ms=251
+2026-04-20T07:53:32.336Z NFR-03 chromium samples_ms=[82,74,58,38,34] median_ms=58 max_ms=82
+2026-04-20T07:53:50.247Z NFR-09 chromium recovered=true
+2026-04-20T07:55:39.016Z NFR-01 chromium fixture=medium elapsed_ms=524
+2026-04-20T07:55:56.988Z NFR-02 chromium elapsed_ms=249
+2026-04-20T07:56:15.428Z NFR-03 chromium samples_ms=[134,86,37,44,37] median_ms=44 max_ms=134
+2026-04-20T07:56:33.648Z NFR-09 chromium recovered=true
+2026-04-20T07:57:58.447Z NFR-01 chromium fixture=medium elapsed_ms=478
+2026-04-20T07:58:16.401Z NFR-02 chromium elapsed_ms=28
+2026-04-20T07:58:34.743Z NFR-03 chromium samples_ms=[152,84,32,34,35] median_ms=35 max_ms=152
+2026-04-20T07:58:52.730Z NFR-09 chromium recovered=true
+2026-04-20T08:00:22.600Z NFR-01 webkit fixture=medium elapsed_ms=631
+2026-04-20T08:00:40.462Z NFR-02 webkit elapsed_ms=54
+2026-04-20T08:00:58.709Z NFR-03 webkit samples_ms=[178,113,63,53,57] median_ms=63 max_ms=178
+2026-04-20T08:01:16.777Z NFR-09 webkit recovered=true

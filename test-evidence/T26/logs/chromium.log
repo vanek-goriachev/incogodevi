@@ -1,0 +1,27 @@
+[fixtures] skip simple (cached: /Users/isegoryachev/Desktop/University/course_project/code_v2/project/e2e/fixtures/.cache/simple.zip)
+[fixtures] skip medium (cached: /Users/isegoryachev/Desktop/University/course_project/code_v2/project/e2e/fixtures/.cache/medium.zip)
+[fixtures] done
+[e2e] backend reachable at http://localhost:8080
+
+Running 8 tests using 1 worker
+
+upload posted, waiting for analyzing screen
+[browser:warning] You have set a custom wheel sensitivity.  This will make your app zoom unnaturally when using mainstream mice.  You should change this value from the default only if you can guarantee that all your users will use the same hardware and OS configuration as your current machine.
+[browser:warning] The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+[browser:warning] The style value of `label` is deprecated for `width`
+[browser:warning] The style value of `label` is deprecated for `height`
+[browser:warning] The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+[browser:warning] The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid
+analysis done, waiting for graph ready
+graph ready
+stats: {"nodes":64,"edges":233,"reachable":61,"dead":3}
+  ✓  1 [chromium] › specs/j1-first-upload.spec.ts:18:3 › J1 — first upload happy path › uploads simple fixture, reaches done, renders graph with dead-code (18.3s)
+  ✓  2 [chromium] › specs/j2-entry-points.spec.ts:32:3 › J2 — change entry points › adding manual entry recomputes graph and updates dead-code panel (19.9s)
+  ✓  3 [chromium] › specs/j3-reload-restore.spec.ts:27:3 › J3 — reload restores graph and positions › positions in localStorage survive a full reload (19.5s)
+  ✓  4 [chromium] › specs/j4-export.spec.ts:20:3 › J4 — export dead-code report › downloads TXT and JSON containing the known dead symbols (17.8s)
+  ✓  5 [chromium] › specs/nfr-01-bench.spec.ts:23:3 › NFR-01 — medium-project analyze under reference budget › uploads medium fixture and times the full pipeline (622ms)
+  ✓  6 [chromium] › specs/nfr.spec.ts:24:3 › NFR-02 — first render under 5s › chromium and webkit both render the simple fixture in <= 5000 ms (17.9s)
+  ✓  7 [chromium] › specs/nfr.spec.ts:49:3 › NFR-03 — filter toggle under 100 ms › toggling a kind filter updates the graph in <= 100 ms (18.3s)
+  ✓  8 [chromium] › specs/nfr.spec.ts:132:3 › NFR-09 — UI survives a 500 on dead-code fetch › error boundary in DeadCodePanel surfaces and Retry recovers (18.0s)
+
+  8 passed (2.2m)

@@ -1,0 +1,286 @@
+{
+  "project_id": "CL5qtwSRyT_mAp6LLL2sAw",
+  "generated_at": "2026-04-20T08:00:21.209493557Z",
+  "entries_count": 31,
+  "entries": [
+    {
+      "kind": "func",
+      "fqn": "example.com/simple/internal/dead.LegacyAdder",
+      "package": "example.com/simple/internal/dead",
+      "name": "LegacyAdder",
+      "file": "/tmp/go-viz/sources/CL5qtwSRyT_mAp6LLL2sAw/internal/dead/dead.go",
+      "line": 7,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "func",
+      "fqn": "example.com/simple/internal/dead.LegacyMultiplier",
+      "package": "example.com/simple/internal/dead",
+      "name": "LegacyMultiplier",
+      "file": "/tmp/go-viz/sources/CL5qtwSRyT_mAp6LLL2sAw/internal/dead/dead.go",
+      "line": 13,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "example.com/simple/internal/dead.UnusedConst",
+      "package": "example.com/simple/internal/dead",
+      "name": "UnusedConst",
+      "file": "/tmp/go-viz/sources/CL5qtwSRyT_mAp6LLL2sAw/internal/dead/dead.go",
+      "line": 18,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsUnix",
+      "package": "internal/goos",
+      "name": "IsUnix",
+      "file": "/usr/local/go/src/internal/goos/unix.go",
+      "line": 9,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.GOOS",
+      "package": "internal/goos",
+      "name": "GOOS",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 7,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsAix",
+      "package": "internal/goos",
+      "name": "IsAix",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 9,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsAndroid",
+      "package": "internal/goos",
+      "name": "IsAndroid",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 10,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsDarwin",
+      "package": "internal/goos",
+      "name": "IsDarwin",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 11,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsDragonfly",
+      "package": "internal/goos",
+      "name": "IsDragonfly",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 12,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsFreebsd",
+      "package": "internal/goos",
+      "name": "IsFreebsd",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 13,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsHurd",
+      "package": "internal/goos",
+      "name": "IsHurd",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 14,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsIllumos",
+      "package": "internal/goos",
+      "name": "IsIllumos",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 15,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsIos",
+      "package": "internal/goos",
+      "name": "IsIos",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 16,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsJs",
+      "package": "internal/goos",
+      "name": "IsJs",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 17,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsLinux",
+      "package": "internal/goos",
+      "name": "IsLinux",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 18,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsNacl",
+      "package": "internal/goos",
+      "name": "IsNacl",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 19,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsNetbsd",
+      "package": "internal/goos",
+      "name": "IsNetbsd",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 20,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsOpenbsd",
+      "package": "internal/goos",
+      "name": "IsOpenbsd",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 21,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsPlan9",
+      "package": "internal/goos",
+      "name": "IsPlan9",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 22,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsSolaris",
+      "package": "internal/goos",
+      "name": "IsSolaris",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 23,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsWasip1",
+      "package": "internal/goos",
+      "name": "IsWasip1",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 24,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsWindows",
+      "package": "internal/goos",
+      "name": "IsWindows",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 25,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "internal/goos.IsZos",
+      "package": "internal/goos",
+      "name": "IsZos",
+      "file": "/usr/local/go/src/internal/goos/zgoos_linux.go",
+      "line": 26,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "struct",
+      "fqn": "iter.Seq",
+      "package": "iter",
+      "name": "Seq",
+      "file": "/usr/local/go/src/iter/iter.go",
+      "line": 223,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "struct",
+      "fqn": "iter.Seq2",
+      "package": "iter",
+      "name": "Seq2",
+      "file": "/usr/local/go/src/iter/iter.go",
+      "line": 229,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "struct",
+      "fqn": "iter.coro",
+      "package": "iter",
+      "name": "coro",
+      "file": "/usr/local/go/src/iter/iter.go",
+      "line": 231,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "func",
+      "fqn": "iter.newcoro",
+      "package": "iter",
+      "name": "newcoro",
+      "file": "/usr/local/go/src/iter/iter.go",
+      "line": 234,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "func",
+      "fqn": "iter.coroswitch",
+      "package": "iter",
+      "name": "coroswitch",
+      "file": "/usr/local/go/src/iter/iter.go",
+      "line": 237,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "func",
+      "fqn": "iter.Pull",
+      "package": "iter",
+      "name": "Pull",
+      "file": "/usr/local/go/src/iter/iter.go",
+      "line": 261,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "func",
+      "fqn": "iter.Pull2",
+      "package": "iter",
+      "name": "Pull2",
+      "file": "/usr/local/go/src/iter/iter.go",
+      "line": 376,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "var",
+      "fqn": "iter.goexitPanicValue",
+      "package": "iter",
+      "name": "goexitPanicValue",
+      "file": "/usr/local/go/src/iter/iter.go",
+      "line": 473,
+      "reason": "unreachable"
+    }
+  ]
+}
