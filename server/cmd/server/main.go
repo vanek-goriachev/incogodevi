@@ -28,7 +28,9 @@ import (
 )
 
 // version is the build-time version string. Bumped together with releases.
-const version = "0.1.0-dev"
+// It is declared as a var (not a const) so release builds can inject the real
+// tag via -ldflags "-X main.version=...". See Dockerfile and Makefile.
+var version = "0.1.0-dev"
 
 // Default configuration. Overridable via environment.
 const (

@@ -1,0 +1,7 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+X-Request-Id: 790d00302dc71bd5
+Date: Mon, 20 Apr 2026 03:47:08 GMT
+Content-Length: 73
+
+{"status":"ok","version":"0.1.0-dev","uptime_sec":6,"active_projects":0}
