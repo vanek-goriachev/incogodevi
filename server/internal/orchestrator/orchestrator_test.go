@@ -517,7 +517,7 @@ func TestPartialGraphChunking(t *testing.T) {
 // PartialMaxChunks.
 func TestPartialGraphChunkCap(t *testing.T) {
 	const total = 1000
-	const cap = 5
+	const chunkCap = 5
 	g := &domain.Graph{}
 	for i := 0; i < total; i++ {
 		g.Nodes = append(g.Nodes, domain.Node{ID: itoa(i), Name: itoa(i), Kind: domain.NodeKindFunc})
@@ -529,7 +529,7 @@ func TestPartialGraphChunkCap(t *testing.T) {
 		Resolver:           &fakeResolver{},
 		Reach:              &fakeReach{},
 		PartialChunkSize:   10,
-		PartialMaxChunks:   cap,
+		PartialMaxChunks:   chunkCap,
 		PartialMinInterval: 1 * time.Millisecond,
 	})
 	rec := httptest.NewRecorder()
@@ -548,8 +548,8 @@ func TestPartialGraphChunkCap(t *testing.T) {
 		nodes := f.Data["nodes"].([]any)
 		totalNodes += len(nodes)
 	}
-	if partials > cap {
-		t.Fatalf("partial_graph count = %d, want <= %d", partials, cap)
+	if partials > chunkCap {
+		t.Fatalf("partial_graph count = %d, want <= %d", partials, chunkCap)
 	}
 	if partials == 0 {
 		t.Fatalf("expected at least one partial_graph frame")
