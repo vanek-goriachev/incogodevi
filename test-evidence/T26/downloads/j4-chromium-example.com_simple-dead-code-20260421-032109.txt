@@ -1,0 +1,4 @@
+func example.com/simple/internal/dead.LegacyAdder — /tmp/go-viz/sources/pfmehOq4amgWjrjxd9sdlg/internal/dead/dead.go:7
+func example.com/simple/internal/dead.LegacyMultiplier — /tmp/go-viz/sources/pfmehOq4amgWjrjxd9sdlg/internal/dead/dead.go:13
+const example.com/simple/internal/dead.UnusedConst — /tmp/go-viz/sources/pfmehOq4amgWjrjxd9sdlg/internal/dead/dead.go:18
+func example.com/simple/internal/util.FormatBanner — /tmp/go-viz/sources/pfmehOq4amgWjrjxd9sdlg/internal/util/util.go:13
