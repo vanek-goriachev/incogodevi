@@ -31,7 +31,11 @@ function makeCy(): Core {
 }
 
 describe('applyFilters', () => {
-  it('hides nodes whose kind is toggled off and any incident edges', () => {
+  it('hides nodes whose kind is toggled off but keeps boundary edges visible', () => {
+    // Reach-depth PR (Bug 2 fix): an edge with one hidden endpoint stays
+    // visible so the user can see the boundary into hidden territory; only
+    // edges with BOTH endpoints hidden disappear. e3 (n2→n3) thus stays
+    // visible after `var` is toggled off, because n2 is still on the canvas.
     const cy = makeCy();
     const spec: FilterSpec = {
       ...defaultFilterSpec(),
@@ -40,8 +44,7 @@ describe('applyFilters', () => {
     applyFilters(cy, spec);
     expect(cy.$id('n3').hasClass('hidden')).toBe(true);
     expect(cy.$id('n2').hasClass('hidden')).toBe(false);
-    // n3 only participates in e3 (n2→n3); e3 must be hidden too.
-    expect(cy.$id('e3').hasClass('hidden')).toBe(true);
+    expect(cy.$id('e3').hasClass('hidden')).toBe(false);
     expect(cy.$id('e1').hasClass('hidden')).toBe(false);
     cy.destroy();
   });

@@ -41,7 +41,11 @@ import {
 
 import type { Edge, Graph, Node } from '../../api/types';
 import { buildStylesheet, type ThemeTokens } from './graph-styles';
-import { computePackageTreePositions } from './layout/packageTree';
+import {
+  computeReachDepthPositions,
+  type LayoutEdge,
+  type LayoutNode,
+} from './layout/reachDepth';
 import { Tooltip, type TooltipPayload } from './Tooltip';
 import { usePositionsStorage, type PositionMap } from './usePositionsStorage';
 
@@ -358,10 +362,10 @@ export function GraphCanvas({
         cy.center();
       }
     });
-    // R12: Relayout re-applies the deterministic package-tree positions
-    // (same input → same pixels). No force pass over the disturbed canvas,
-    // so pressing the button repeatedly is idempotent.
-    applyPackageTreePositions(cy);
+    // Reach-depth: Relayout re-applies positions derived from BFS distance
+    // from entry-points + barycenter intra-layer ordering. Same input →
+    // same pixels, so pressing the button is idempotent to ≤1 px.
+    applyReachDepthPositions(cy);
     cy.layout({ name: 'preset', animate: false } as LayoutOptions).run();
   }, [layoutTrigger, graph, positions, reducedMotion]);
 
@@ -667,41 +671,66 @@ function runLayout(
     });
   });
 
-  applyPackageTreePositions(cy);
+  applyReachDepthPositions(cy);
   void reducedMotion;
   cy.layout({ name: 'preset', animate: false } as LayoutOptions).run();
 }
 
 /**
- * Walk every top-level (non-compound-child) node, derive a deterministic
- * (x, y) from its package path, and write it directly. Compound children
- * (member nodes inside an expanded package) keep their pre-existing position
- * — `useAggregateExpand.applyExpansion` owns those via its scoped fcose pass.
+ * Reach-depth pure positioner adapter for Cytoscape.
+ *
+ * Reads every top-level node and edge from `cy`, builds a plain data
+ * representation, calls `computeReachDepthPositions` and writes positions
+ * back. Compound children (members inside an expanded package) keep their
+ * pre-existing position — `useAggregateExpand.applyExpansion` owns those via
+ * its scoped reach-depth pass.
+ *
+ * Determinism: identical `cy` topology + entry set ⇒ identical positions.
+ * That is what makes the Re-layout button idempotent to ≤1 px.
  */
-function applyPackageTreePositions(cy: Core): void {
-  const pkgPaths = new Set<string>();
+function applyReachDepthPositions(cy: Core): void {
+  const nodes: LayoutNode[] = [];
+  const entryIds = new Set<string>();
   cy.nodes().forEach((n) => {
-    // Children of an expanded compound parent inherit their parent's frame;
-    // their positions are computed locally by the expansion path.
     if (n.isChild() && n.parent().length > 0) {
       return;
     }
-    const pkg = n.data('package');
-    if (typeof pkg === 'string' && pkg.length > 0) {
-      pkgPaths.add(pkg);
+    const id = n.id();
+    const isEntry = n.data('is_entry') === true || n.hasClass('entry');
+    nodes.push({ id, isEntry });
+    if (isEntry) {
+      entryIds.add(id);
     }
   });
-  const positions = computePackageTreePositions(Array.from(pkgPaths));
+  const edges: LayoutEdge[] = [];
+  cy.edges().forEach((e) => {
+    const src = e.source();
+    const tgt = e.target();
+    if (src.empty() || tgt.empty()) {
+      return;
+    }
+    // Skip edges that belong inside an expanded compound — those are local
+    // to the per-package layout pass and would otherwise drag the package's
+    // children into the canvas-wide layer assignment.
+    if (src.isChild() && src.parent().length > 0) return;
+    if (tgt.isChild() && tgt.parent().length > 0) return;
+    edges.push({ source: src.id(), target: tgt.id() });
+  });
+
+  const canvasWidth = Math.max(1200, cy.width() || 1200);
+  const positions = computeReachDepthPositions(nodes, edges, entryIds, {
+    canvasWidth,
+    topPadding: 80,
+    layerGap: 200,
+    minNodeGap: 240,
+    deadRegion: { dx: 200, dy: 160 },
+  });
   cy.batch(() => {
     cy.nodes().forEach((n) => {
       if (n.isChild() && n.parent().length > 0) {
         return;
       }
-      const pkg = n.data('package');
-      if (typeof pkg !== 'string') {
-        return;
-      }
-      const p = positions.get(pkg);
+      const p = positions.get(n.id());
       if (p === undefined) {
         return;
       }
@@ -709,6 +738,10 @@ function applyPackageTreePositions(cy: Core): void {
     });
   });
 }
+
+// Exported for tests; intentional named re-export so the test harness does
+// not need to plumb through Cytoscape just to verify the adapter wiring.
+export { applyReachDepthPositions };
 
 /** Scope passed to `runLayout` helpers. Mirrors `layoutOptionsFor`. */
 type LayoutScope = 'initial' | 'relayout-button' | 'expansion';
