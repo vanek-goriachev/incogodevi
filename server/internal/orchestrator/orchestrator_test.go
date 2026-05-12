@@ -517,7 +517,7 @@ func TestPartialGraphChunking(t *testing.T) {
 // PartialMaxChunks.
 func TestPartialGraphChunkCap(t *testing.T) {
 	const total = 1000
-	const cap = 5
+	const chunkCap = 5
 	g := &domain.Graph{}
 	for i := 0; i < total; i++ {
 		g.Nodes = append(g.Nodes, domain.Node{ID: itoa(i), Name: itoa(i), Kind: domain.NodeKindFunc})
@@ -529,7 +529,7 @@ func TestPartialGraphChunkCap(t *testing.T) {
 		Resolver:           &fakeResolver{},
 		Reach:              &fakeReach{},
 		PartialChunkSize:   10,
-		PartialMaxChunks:   cap,
+		PartialMaxChunks:   chunkCap,
 		PartialMinInterval: 1 * time.Millisecond,
 	})
 	rec := httptest.NewRecorder()
@@ -548,8 +548,8 @@ func TestPartialGraphChunkCap(t *testing.T) {
 		nodes := f.Data["nodes"].([]any)
 		totalNodes += len(nodes)
 	}
-	if partials > cap {
-		t.Fatalf("partial_graph count = %d, want <= %d", partials, cap)
+	if partials > chunkCap {
+		t.Fatalf("partial_graph count = %d, want <= %d", partials, chunkCap)
 	}
 	if partials == 0 {
 		t.Fatalf("expected at least one partial_graph frame")
@@ -779,9 +779,29 @@ func TestEntryResolverWarningPassthrough(t *testing.T) {
 
 type fakeParser struct {
 	loadFn func(ctx context.Context, id domain.ProjectID, progress chan<- float64) (*parser.LoadResult, error)
+	// loadCalls / loadLiveCalls let assertions count which entry point the
+	// orchestrator used. Bumped from Load and LoadLive respectively.
+	loadCalls     int
+	loadLiveCalls int
 }
 
 func (f *fakeParser) Load(ctx context.Context, id domain.ProjectID, progress chan<- float64) (*parser.LoadResult, error) {
+	f.loadCalls++
+	if f.loadFn != nil {
+		return f.loadFn(ctx, id, progress)
+	}
+	if progress != nil {
+		close(progress)
+	}
+	return &parser.LoadResult{}, nil
+}
+
+// LoadLive routes to the same fake hook as Load so existing tests stay green
+// after the orchestrator switched to LoadLive for live-types analysis. The
+// loadLiveCalls counter lets dedicated tests assert the orchestrator never
+// falls back to the cache-friendly Load path.
+func (f *fakeParser) LoadLive(ctx context.Context, id domain.ProjectID, progress chan<- float64) (*parser.LoadResult, error) {
+	f.loadLiveCalls++
 	if f.loadFn != nil {
 		return f.loadFn(ctx, id, progress)
 	}
@@ -854,6 +874,34 @@ func (f *failingCache) WriteGraph(_ domain.ProjectID, _ *domain.Graph) error {
 }
 func (f *failingCache) WriteDeadCode(_ domain.ProjectID, _ *domain.DeadCodeReport) error {
 	return f.writeDeadCodeErr
+}
+
+// TestRunUsesLoadLiveBypassingCache guards the fix for the cached-re-analyze
+// regression: the orchestrator must never serve the cache-friendly Load path,
+// because cache hits drop *types.Package data and the entry resolver then
+// rejects every manual FQN as unresolvable. Asserting that LoadLive (and only
+// LoadLive) was invoked keeps this contract enforceable in tests.
+func TestRunUsesLoadLiveBypassingCache(t *testing.T) {
+	id := domain.NewProjectID()
+	parserStub := &fakeParser{}
+	o := orchestrator.New(orchestrator.Options{
+		Cache:    &noopCache{},
+		Parser:   parserStub,
+		Builder:  &fakeBuilder{},
+		Resolver: &fakeResolver{},
+		Reach:    &fakeReach{},
+	})
+	rec := httptest.NewRecorder()
+	stream, _ := api.NewSSEStreamer(rec)
+	if err := o.Run(context.Background(), id, domain.DefaultEntryPointSpec(), domain.DefaultFilters(), stream); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if parserStub.loadLiveCalls != 1 {
+		t.Fatalf("LoadLive calls = %d, want 1", parserStub.loadLiveCalls)
+	}
+	if parserStub.loadCalls != 0 {
+		t.Fatalf("Load (cache-friendly) calls = %d, want 0 — orchestrator must bypass the parser cache", parserStub.loadCalls)
+	}
 }
 
 // itoa is a dependency-free integer formatter mirrored from sse_test.go so the

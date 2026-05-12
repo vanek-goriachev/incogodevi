@@ -349,13 +349,13 @@ function AddEntryDialog({
 
   const handlePickSubmit = useCallback(
     (node: Node) => {
-      const candidate = nodeToFqn(node);
+      const candidate = nodeToFqn(node, graph);
       if (candidate === null) {
         return;
       }
       onSubmit(candidate);
     },
-    [onSubmit],
+    [graph, onSubmit],
   );
 
   const handleFqnSubmit = useCallback(
@@ -439,7 +439,7 @@ function AddEntryDialog({
                 <li className="entry-dialog__hint">No matching nodes.</li>
               ) : (
                 filtered.map((node) => {
-                  const candidate = nodeToFqn(node);
+                  const candidate = nodeToFqn(node, graph);
                   if (candidate === null) {
                     return null;
                   }

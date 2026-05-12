@@ -32,6 +32,12 @@ func Aggregate(g *domain.Graph) *domain.Graph {
 		External   bool
 		ChildCount int
 		DeadCount  int
+		// IsEntry is true when the package itself or any of its children is
+		// flagged as an entry-point. The aggregated view must surface this so
+		// the FE renders the entry-pin marker on the package node when a
+		// large project is auto-aggregated (>1000 nodes) — without it, manual
+		// entry-points become invisible in the package view.
+		IsEntry bool
 	}
 
 	buckets := make(map[string]*packageBucket)
@@ -53,7 +59,7 @@ func Aggregate(g *domain.Graph) *domain.Graph {
 		if _, ok := buckets[n.Package]; ok {
 			continue
 		}
-		buckets[n.Package] = &packageBucket{Name: n.Name, Path: n.Package, Reachable: n.Reachable, External: n.External}
+		buckets[n.Package] = &packageBucket{Name: n.Name, Path: n.Package, Reachable: n.Reachable, External: n.External, IsEntry: n.IsEntry}
 		pkgOrder = append(pkgOrder, n.Package)
 		pkgIDByPath[n.Package] = n.ID
 	}
@@ -79,6 +85,9 @@ func Aggregate(g *domain.Graph) *domain.Graph {
 		} else {
 			bucket.DeadCount++
 		}
+		if n.IsEntry {
+			bucket.IsEntry = true
+		}
 	}
 
 	sort.Strings(pkgOrder)
@@ -99,6 +108,7 @@ func Aggregate(g *domain.Graph) *domain.Graph {
 			Package:     bucket.Path,
 			Exported:    true,
 			Reachable:   bucket.Reachable,
+			IsEntry:     bucket.IsEntry,
 			ChildCount:  bucket.ChildCount,
 			DeadCount:   bucket.DeadCount,
 			PartialDead: partial,

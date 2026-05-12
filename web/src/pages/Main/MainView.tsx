@@ -166,6 +166,20 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
     [showToast],
   );
 
+  // Surface entry-pin overflow as a non-blocking warning. The pin layer in
+  // GraphCanvas already bails when entry-points exceed ENTRY_PIN_LIMIT to
+  // keep the layout legible; emitting a toast here turns what used to be a
+  // silent visual failure into an explicit message the user can act on.
+  const handlePinOverflow = useCallback(
+    (entryCount: number, limit: number) => {
+      showToast(
+        `Showing reachability for ${String(entryCount)} entry points; only the first ${String(limit)} are pinned visually.`,
+        'warning',
+      );
+    },
+    [showToast],
+  );
+
   // Apply the entry-point spec to the graph: prefer the local override when
   // it exists, otherwise return the unmodified server graph.
   const effectiveGraph = useMemo<Graph | null>(() => {
@@ -458,6 +472,7 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
           <div className="main-view__rail" data-testid="main-right-rail">
             <InfoPanel
               selectedNode={selectedNode}
+              graph={effectiveGraph}
               onAddEntry={handleAddEntryFromInfo}
               onCopy={handleCopyResult}
             />
@@ -500,6 +515,7 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
           selectedNodeId={selectedNodeId}
           onCyReady={handleCyReady}
           layoutTrigger={layoutTrigger}
+          onPinOverflow={handlePinOverflow}
         />
         <ContextMenu
           cy={cy}
@@ -511,6 +527,7 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
           onExpand={collapse.expand}
           onCollapsePackage={aggregateExpand.collapsePackage}
           onCopyPath={handleCopyResult}
+          graph={effectiveGraph}
         />
         {isReanalyzing ? (
           <div className="main-view__reanalyze" data-testid="main-reanalyze-overlay">
