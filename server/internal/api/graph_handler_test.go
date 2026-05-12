@@ -255,13 +255,30 @@ func TestGraph_ScopeHappyPath(t *testing.T) {
 	if got.Aggregation != aggregationNone {
 		t.Errorf("aggregation: got %q, want none", got.Aggregation)
 	}
+	// Every non-package node must belong to the scope. Package nodes from a
+	// different package are allowed (they are foreign-package boundary
+	// anchors so cross-package edges can still be rendered).
+	inScope := 0
+	foreignPkgNodes := 0
 	for _, n := range got.Nodes {
-		if n.Package != scope {
-			t.Errorf("node %q has package %q, expected %q", n.ID, n.Package, scope)
+		if n.Package == scope {
+			inScope++
+			continue
 		}
+		if n.Kind == domain.NodeKindPackage {
+			foreignPkgNodes++
+			continue
+		}
+		t.Errorf("node %q has package %q, expected %q", n.ID, n.Package, scope)
 	}
-	if got.Stats.NodeCount != 3 {
-		t.Errorf("node_count: got %d, want 3", got.Stats.NodeCount)
+	// scope contains: 1 package node + Alive + Dead = 3 in-scope nodes.
+	if inScope != 3 {
+		t.Errorf("in-scope node count: got %d, want 3", inScope)
+	}
+	// Foreign package node 'baz' is referenced by the Alive→Alive boundary
+	// edge so it must appear in the response exactly once.
+	if foreignPkgNodes != 1 {
+		t.Errorf("foreign package nodes: got %d, want 1", foreignPkgNodes)
 	}
 }
 
@@ -281,10 +298,57 @@ func TestGraph_ScopeBeatsAggregate(t *testing.T) {
 	if got.Aggregation != aggregationNone {
 		t.Errorf("aggregation: got %q, want none (scope must win over aggregate)", got.Aggregation)
 	}
+	// Detail nodes must all belong to scope; foreign package nodes are
+	// allowed (they appear as boundary anchors for cross-package edges).
 	for _, n := range got.Nodes {
-		if n.Package != scope {
-			t.Errorf("node out of scope: %q", n.Package)
+		if n.Package != scope && n.Kind != domain.NodeKindPackage {
+			t.Errorf("non-package node out of scope: %q (pkg=%q)", n.ID, n.Package)
 		}
+	}
+}
+
+func TestGraph_ScopeBoundaryEdges(t *testing.T) {
+	t.Parallel()
+
+	ts, id, _ := seedGraph(t)
+	scope := "example.com/foo/bar"
+	resp, err := http.Get(ts.URL + "/api/projects/" + string(id) + "/graph?scope=" + scope)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	got := decodeGraphResponse(t, resp.Body)
+
+	// The Alive→Alive cross-package edge from the fixture must surface as
+	// a boundary edge whose target is the foreign package's package-node id.
+	foreignPkgID := domain.NodeID("example.com/foo/baz", "", "")
+	aliveAID := domain.NodeID(scope, "", "Alive")
+	var found bool
+	for _, e := range got.Edges {
+		if e.Source == aliveAID && e.Target == foreignPkgID {
+			found = true
+			if !strings.HasSuffix(e.ID, "@boundary") {
+				t.Errorf("boundary edge id missing @boundary suffix: %q", e.ID)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected boundary edge %s -> %s, edges: %+v", aliveAID, foreignPkgID, got.Edges)
+	}
+
+	// And the foreign package node must be embedded in the response so the
+	// client never has to depend on cross-snapshot id stability.
+	var hasForeignPkg bool
+	for _, n := range got.Nodes {
+		if n.ID == foreignPkgID && n.Kind == domain.NodeKindPackage {
+			hasForeignPkg = true
+			break
+		}
+	}
+	if !hasForeignPkg {
+		t.Errorf("foreign package node %q missing from scoped response", foreignPkgID)
 	}
 }
 
