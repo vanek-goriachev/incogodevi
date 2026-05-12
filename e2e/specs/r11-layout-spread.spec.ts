@@ -30,6 +30,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { waitForAnalysisDone, waitForGraphReady } from '../helpers/sse';
+import { waitForLayoutStop } from '../support/waitForLayoutStop';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..', '..');
@@ -240,8 +241,15 @@ test.describe('R11 layout spread verification', () => {
     await waitForGraphReady(page, 60_000);
     await expect(page.locator('[data-testid="screen-main"]')).toBeVisible();
 
-    // Wait for layout to settle (animation + zoom-cap fit).
-    await page.waitForTimeout(4_500);
+    // Wait for layout to settle deterministically rather than via a fixed
+    // sleep. R12: the preset tree layout is synchronous, but a future fit /
+    // expansion may still emit a trailing `layoutstop`.
+    try {
+      await waitForLayoutStop(page, { timeout: 5_000 });
+    } catch {
+      // Preset layout may have already fired before the listener attached.
+      // Continue — subsequent assertions surface any real failure.
+    }
 
     await shot(page, 'r11-xray-initial-layout');
 
@@ -342,9 +350,17 @@ test.describe('R11 layout spread verification', () => {
 
     await shot(page, 'r11-xray-after-expansions');
 
-    // ---- Press the relayout button and confirm spread persists ----
+    // ---- R12 idempotence check: snapshot positions, press Relayout, ----
+    // ----   snapshot again, assert L∞ delta ≤ 1 px per node.        ----
+    const snapBefore = await snapshotTopLevelPositions(page);
     await page.locator('[data-testid="main-relayout"]').click();
-    await page.waitForTimeout(2_500);
+    try {
+      await waitForLayoutStop(page, { timeout: 5_000 });
+    } catch {
+      // Preset layout is synchronous — listener may attach after the event.
+    }
+    const snapAfter = await snapshotTopLevelPositions(page);
+
     const afterRelayout = await collectSpreadMetrics(page);
     console.log(`[R11] after relayout: ${JSON.stringify(afterRelayout)}`);
     appendMetricsLog(`after-relayout ${JSON.stringify(afterRelayout)}`);
@@ -356,6 +372,51 @@ test.describe('R11 layout spread verification', () => {
     expect(afterRelayout.nnRatio).toBeGreaterThanOrEqual(1.30);
     expect(afterRelayout.overlapCount).toBeLessThanOrEqual(3);
 
+    // Idempotence: every top-level node that existed both before and after
+    // Relayout must sit at (almost) exactly the same model coordinate.
+    const maxDelta = computeMaxDelta(snapBefore, snapAfter);
+    appendMetricsLog(`relayout-idempotence maxDelta=${String(maxDelta)}`);
+    expect(
+      maxDelta,
+      `Relayout must be idempotent — saw ${String(maxDelta)}px max delta`,
+    ).toBeLessThanOrEqual(1);
+
     appendMetricsLog(`DONE`);
   });
 });
+
+async function snapshotTopLevelPositions(page: Page): Promise<Record<string, { x: number; y: number }>> {
+  return await page.evaluate(() => {
+    interface CyNode {
+      id: () => string;
+      isChild: () => boolean;
+      parent: () => { length: number };
+      position: () => { x: number; y: number };
+    }
+    interface CyApi { nodes: () => { toArray: () => CyNode[] } }
+    const cy = (window as unknown as { __cy?: CyApi }).__cy;
+    if (cy === undefined) return {};
+    const out: Record<string, { x: number; y: number }> = {};
+    for (const n of cy.nodes().toArray()) {
+      if (n.isChild() && n.parent().length > 0) continue;
+      const p = n.position();
+      out[n.id()] = { x: p.x, y: p.y };
+    }
+    return out;
+  });
+}
+
+function computeMaxDelta(
+  a: Record<string, { x: number; y: number }>,
+  b: Record<string, { x: number; y: number }>,
+): number {
+  let max = 0;
+  for (const id of Object.keys(a)) {
+    const pa = a[id];
+    const pb = b[id];
+    if (pa === undefined || pb === undefined) continue;
+    const d = Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
+    if (d > max) max = d;
+  }
+  return max;
+}
