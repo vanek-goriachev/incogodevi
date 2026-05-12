@@ -16,6 +16,8 @@
  *                          tap can populate the manual list directly.
  */
 
+import type { Core, NodeSingular } from 'cytoscape';
+
 import type { Graph, Node } from '../../../api/types';
 
 /**
@@ -78,6 +80,65 @@ export function nodeToFqn(node: Node, graph?: Graph | null): string | null {
  * method node and return its `Name`. Returns `null` when the parent cannot be
  * located, signalling to the caller that the FQN cannot be constructed.
  */
+/**
+ * Live-graph variant of {@link nodeToFqn} used by the find resolver.
+ *
+ * Reads node kind / package / name straight from cy `data()` and recovers the
+ * method receiver by walking the `contains` edges already present in the
+ * Cytoscape core, so dynamically added members (`expandStructMembers`) get
+ * an FQN even before the React `graph` snapshot has been refreshed.
+ *
+ * Returns `null` for non-func/non-method nodes or when the receiver cannot be
+ * resolved — the caller must fall back to name-only matching in that case.
+ */
+export function cyNodeToFqn(node: NodeSingular, cy: Core): string | null {
+  const kind = String(node.data('kind') ?? '');
+  if (kind !== 'func' && kind !== 'method') {
+    return null;
+  }
+  const pkg = String(node.data('package') ?? '');
+  const name = String(node.data('name') ?? '');
+  if (pkg === '' || name === '') {
+    return null;
+  }
+  if (kind === 'method') {
+    const receiver = lookupReceiverNameInCy(node.id(), cy);
+    if (receiver === null) {
+      return null;
+    }
+    return `${pkg}#${receiver}.${name}`;
+  }
+  return `${pkg}#${name}`;
+}
+
+/** Walk cy `contains` edges to find the struct/interface owning a method. */
+function lookupReceiverNameInCy(methodId: string, cy: Core): string | null {
+  // `[kind = "contains"][target = "<id>"]` is the canonical selector; we use
+  // the JS API instead of a string selector so escaping is not a concern when
+  // the SHA1 id contains characters the selector grammar would choke on.
+  let receiver: string | null = null;
+  cy.edges().forEach((edge) => {
+    if (receiver !== null) {
+      return;
+    }
+    if (String(edge.data('kind') ?? '') !== 'contains') {
+      return;
+    }
+    if (edge.target().id() !== methodId) {
+      return;
+    }
+    const parent = edge.source();
+    const pkind = String(parent.data('kind') ?? '');
+    if (pkind === 'struct' || pkind === 'interface') {
+      const pname = String(parent.data('name') ?? '');
+      if (pname !== '') {
+        receiver = pname;
+      }
+    }
+  });
+  return receiver;
+}
+
 function lookupReceiverName(node: Node, graph?: Graph | null): string | null {
   if (graph === null || graph === undefined) {
     return null;

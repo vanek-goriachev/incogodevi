@@ -21,6 +21,7 @@ import type { Core, NodeSingular, StylesheetStyle } from 'cytoscape';
 
 import { ALL_NODE_KINDS } from '../../api/types';
 import type { FilterSpec } from './panels/filterSpec';
+import { cyNodeToFqn } from './panels/fqn';
 
 /**
  * Selectors maintained by this hook; appended to the live stylesheet.
@@ -119,14 +120,25 @@ export function applyFilters(cy: Core, spec: FilterSpec): void {
     if (needle === '') {
       return;
     }
+    // Match by node name AND by receiver-aware FQN (PR #48: `pkg#Recv.Method`)
+    // so users can search either the bare identifier (`Run`) or the qualified
+    // form (`Server.Run`, `github.com/acme/api#Server.Run`). Backend node IDs
+    // are opaque SHA1 hashes (server/internal/domain/node.go) so substring
+    // matching against `node.id()` is effectively dead — we keep it out of the
+    // haystack to avoid sporadic hex collisions.
     let matched = 0;
     cy.nodes().forEach((node: NodeSingular) => {
       if (node.hasClass('hidden')) {
         return;
       }
       const name = String(node.data('name') ?? '').toLowerCase();
-      const id = node.id().toLowerCase();
-      if (name.includes(needle) || id.includes(needle)) {
+      if (name.includes(needle)) {
+        node.addClass('match');
+        matched += 1;
+        return;
+      }
+      const fqn = cyNodeToFqn(node, cy);
+      if (fqn !== null && fqn.toLowerCase().includes(needle)) {
         node.addClass('match');
         matched += 1;
       }

@@ -222,4 +222,32 @@ describe('<EntryPointsPanel />', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByTestId('entry-dialog')).toBeNull();
   });
+
+  it('keeps the dialog open and the FQN input focused when mouseup escapes the input onto the backdrop', async () => {
+    render(<Harness />);
+    await userEvent.click(screen.getByTestId('entry-panel-add'));
+    await userEvent.click(screen.getByTestId('entry-dialog-tab-fqn'));
+    const input = screen.getByTestId('entry-dialog-fqn-input') as HTMLInputElement;
+    const backdrop = screen.getByTestId('entry-dialog-backdrop');
+    // Real-world repro: user drag-selects text inside the input. The pointerdown
+    // lands on the input; the pointerup escapes onto the padded backdrop and
+    // React fires a synthetic click on the backdrop (target=backdrop). Before
+    // the fix that click dismissed the dialog and discarded the typed value.
+    fireEvent.mouseDown(input);
+    fireEvent.click(backdrop, { target: backdrop });
+    expect(screen.getByTestId('entry-dialog')).toBeInTheDocument();
+    input.focus();
+    await userEvent.type(input, 'github.com/acme/api#Server.Run');
+    expect(input.value).toBe('github.com/acme/api#Server.Run');
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('still dismisses when both mousedown and click land on the backdrop', async () => {
+    render(<Harness />);
+    await userEvent.click(screen.getByTestId('entry-panel-add'));
+    const backdrop = screen.getByTestId('entry-dialog-backdrop');
+    fireEvent.mouseDown(backdrop, { target: backdrop });
+    fireEvent.click(backdrop, { target: backdrop });
+    expect(screen.queryByTestId('entry-dialog')).toBeNull();
+  });
 });

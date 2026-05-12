@@ -5,8 +5,20 @@
 
 import { describe, expect, it } from 'vitest';
 
+import cytoscape, { type Core } from 'cytoscape';
+
 import type { Edge, Graph, Node } from '../api/types';
-import { isValidFqn, nodeToFqn } from '../pages/Main/panels/fqn';
+import { cyNodeToFqn, isValidFqn, nodeToFqn } from '../pages/Main/panels/fqn';
+
+function makeCy(elements: cytoscape.ElementDefinition[]): Core {
+  const opts: cytoscape.CytoscapeOptions = {
+    elements,
+    headless: true,
+    styleEnabled: true,
+  };
+  (opts as unknown as { renderer: { name: string } }).renderer = { name: 'null' };
+  return cytoscape(opts);
+}
 
 function makeNode(overrides: Partial<Node>): Node {
   return {
@@ -120,5 +132,41 @@ describe('nodeToFqn', () => {
   it('returns null when the package or name is empty', () => {
     expect(nodeToFqn(makeNode({ package: '' }))).toBeNull();
     expect(nodeToFqn(makeNode({ name: '' }))).toBeNull();
+  });
+});
+
+describe('cyNodeToFqn', () => {
+  it('reads receiver from cy contains edges for a method node', () => {
+    const cy = makeCy([
+      { group: 'nodes', data: { id: 'sid', name: 'Server', kind: 'struct', package: 'api' } },
+      { group: 'nodes', data: { id: 'mid', name: 'Run', kind: 'method', package: 'api' } },
+      { group: 'edges', data: { id: 'e1', source: 'sid', target: 'mid', kind: 'contains' } },
+    ]);
+    expect(cyNodeToFqn(cy.$id('mid'), cy)).toBe('api#Server.Run');
+    cy.destroy();
+  });
+
+  it('builds pkg#Name for a function node', () => {
+    const cy = makeCy([
+      { group: 'nodes', data: { id: 'fid', name: 'Handler', kind: 'func', package: 'api' } },
+    ]);
+    expect(cyNodeToFqn(cy.$id('fid'), cy)).toBe('api#Handler');
+    cy.destroy();
+  });
+
+  it('returns null for a method with no contains edge', () => {
+    const cy = makeCy([
+      { group: 'nodes', data: { id: 'mid', name: 'Run', kind: 'method', package: 'api' } },
+    ]);
+    expect(cyNodeToFqn(cy.$id('mid'), cy)).toBeNull();
+    cy.destroy();
+  });
+
+  it('returns null for non-callable kinds', () => {
+    const cy = makeCy([
+      { group: 'nodes', data: { id: 'p', name: 'pkg', kind: 'package', package: 'api' } },
+    ]);
+    expect(cyNodeToFqn(cy.$id('p'), cy)).toBeNull();
+    cy.destroy();
   });
 });
