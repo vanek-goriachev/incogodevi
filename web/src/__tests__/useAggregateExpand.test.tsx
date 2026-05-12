@@ -271,7 +271,10 @@ describe('useAggregateExpand', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it('respects the per-snapshot expand limit and surfaces an info message', async () => {
+  it('allows expanding more than three packages without firing an info toast', async () => {
+    // Regression guard for the removal of the historic EXPAND_LIMIT = 3 cap.
+    // The 4th expansion must hit the network (no client-side short-circuit)
+    // and must not surface an "Already expanded ..." informational toast.
     const { client, spy } = makeApiClient((_, opts) =>
       Promise.resolve(detailGraph(opts.scope ?? '')),
     );
@@ -287,14 +290,6 @@ describe('useAggregateExpand', () => {
       }),
     );
 
-    // Pre-populate the expanded set up to the limit.
-    await act(async () => {
-      await result.current.expand('example.com/a');
-    });
-    await act(async () => {
-      await result.current.expand('example.com/b');
-    });
-    // Add a third aggregated node and try to push past the limit.
     cy.add({
       group: 'nodes',
       data: {
@@ -325,15 +320,22 @@ describe('useAggregateExpand', () => {
         child_count: 1,
       },
     });
-    await act(async () => {
-      await result.current.expand('example.com/c');
-    });
 
-    const callCount = spy.mock.calls.length;
-    await act(async () => {
-      await result.current.expand('example.com/d');
-    });
-    expect(spy.mock.calls.length).toBe(callCount);
-    expect(onInfo).toHaveBeenCalledWith(expect.stringContaining('Already expanded'));
+    const targets = [
+      'example.com/a',
+      'example.com/b',
+      'example.com/c',
+      'example.com/d',
+    ];
+    for (const t of targets) {
+      await act(async () => {
+        await result.current.expand(t);
+      });
+    }
+
+    // One network call per distinct package — including the 4th.
+    expect(spy.mock.calls.length).toBe(targets.length);
+    expect(result.current.expandedPackages.size).toBe(targets.length);
+    expect(onInfo).not.toHaveBeenCalled();
   });
 });

@@ -112,9 +112,11 @@ test.describe('R8 fixes verification', () => {
     console.log(`[R8 Task A] expansion targets: ${JSON.stringify(expansionTargets)}`);
     expect(expansionTargets.length, 'must have ≥5 expandable package nodes on Xray').toBeGreaterThanOrEqual(5);
 
-    // We can only have EXPAND_LIMIT (3) packages expanded simultaneously, so
-    // we collapse between batches. We just want to time individual expansions,
-    // so we measure each in isolation.
+    // We collapse between batches of 3 to keep the canvas comparable across
+    // measurements — each expansion is timed in isolation, starting from a
+    // freshly-collapsed canvas, so accumulated state does not skew later
+    // samples. The client no longer enforces a hard EXPAND_LIMIT, but the
+    // periodic collapse keeps the workload uniform for the perf assertion.
     const timings: Array<{ pkg: string; elapsedMs: number; addedNodes: number }> = [];
     for (let i = 0; i < expansionTargets.length; i += 1) {
       const t = expansionTargets[i];
