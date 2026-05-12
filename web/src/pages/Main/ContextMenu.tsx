@@ -35,6 +35,12 @@ interface MenuState {
   y: number;
   /** Whether the node is currently in the collapsed set. */
   isCollapsed: boolean;
+  /**
+   * Whether the node belongs to a package that has been expanded via
+   * `useAggregateExpand`. Drives the "Collapse package" affordance — it
+   * only makes sense on member nodes of an expanded package.
+   */
+  belongsToExpandedPackage: boolean;
 }
 
 export interface ContextMenuProps {
@@ -42,6 +48,8 @@ export interface ContextMenuProps {
   cy: Core | null;
   /** Set of currently collapsed node ids (from `useCollapse`). */
   collapsedIds: ReadonlySet<string>;
+  /** Set of package paths that have been expanded via `useAggregateExpand`. */
+  expandedPackages?: ReadonlySet<string>;
   /** Triggered when the user picks "Info" — typically `setSelectedNodeId`. */
   onShowInfo?: (nodeId: string) => void;
   /** Triggered when the user picks "Add as entry". */
@@ -50,6 +58,8 @@ export interface ContextMenuProps {
   onCollapse?: (nodeId: string) => void;
   /** Triggered when the user picks "Show subtree" on a collapsed root. */
   onExpand?: (nodeId: string) => void;
+  /** Triggered when the user picks "Collapse package". */
+  onCollapsePackage?: (packagePath: string) => void;
   /** Triggered when the user picks "Copy path". */
   onCopyPath?: (text: string, success: boolean) => void;
 }
@@ -57,10 +67,12 @@ export interface ContextMenuProps {
 export function ContextMenu({
   cy,
   collapsedIds,
+  expandedPackages,
   onShowInfo,
   onAddEntry,
   onCollapse,
   onExpand,
+  onCollapsePackage,
   onCopyPath,
 }: ContextMenuProps): JSX.Element | null {
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -91,6 +103,8 @@ export function ContextMenu({
         x: renderedPos.x,
         y: renderedPos.y,
         isCollapsed: collapsedIds.has(data.id),
+        belongsToExpandedPackage:
+          expandedPackages !== undefined && expandedPackages.has(data.package),
       });
     };
     const handleBackgroundTap = (evt: EventObject): void => {
@@ -128,7 +142,7 @@ export function ContextMenu({
         container.removeEventListener('wheel', handleUserViewport);
       }
     };
-  }, [cy, collapsedIds]);
+  }, [cy, collapsedIds, expandedPackages]);
 
   // Esc dismisses the menu — global handler to catch keystrokes regardless
   // of which DOM element holds focus.
@@ -183,6 +197,17 @@ export function ContextMenu({
     }
     close();
   }, [menu, onCollapse, onExpand, close]);
+
+  const handleCollapsePackage = useCallback(() => {
+    if (menu === null) {
+      return;
+    }
+    if (menu.node.package === '') {
+      return;
+    }
+    onCollapsePackage?.(menu.node.package);
+    close();
+  }, [menu, onCollapsePackage, close]);
 
   const handleCopyPath = useCallback(() => {
     if (menu === null) {
@@ -252,6 +277,19 @@ export function ContextMenu({
           {collapseLabel}
         </button>
       </li>
+      {menu.belongsToExpandedPackage ? (
+        <li role="none">
+          <button
+            type="button"
+            role="menuitem"
+            className="context-menu__item"
+            onClick={handleCollapsePackage}
+            data-testid="context-menu-collapse-package"
+          >
+            Collapse package
+          </button>
+        </li>
+      ) : null}
       <li role="none">
         <button
           type="button"

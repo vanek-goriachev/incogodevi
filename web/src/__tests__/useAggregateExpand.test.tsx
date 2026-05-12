@@ -144,7 +144,7 @@ describe('useAggregateExpand', () => {
     expect(result.current.expandedPackages.size).toBe(0);
   });
 
-  it('expands a package and removes the aggregated node', async () => {
+  it('expands a package and promotes the aggregated node into a compound parent', async () => {
     const { client, spy } = makeApiClient((_, opts) =>
       Promise.resolve(detailGraph(opts.scope ?? '')),
     );
@@ -162,9 +162,14 @@ describe('useAggregateExpand', () => {
       await result.current.expand('example.com/a');
     });
 
-    expect(spy).toHaveBeenCalledWith('pid', { scope: 'example.com/a' });
-    expect(cy.$id('pkg-a').empty()).toBe(true);
+    expect(spy).toHaveBeenCalledWith('pid', { scope: 'example.com/a', level: 'struct' });
+    // R4-4: the aggregated node stays on the canvas as a compound parent
+    // instead of being removed. Its members carry `parent: pkg-a` so
+    // Cytoscape boxes them under the aggregated node.
+    expect(cy.$id('pkg-a').nonempty()).toBe(true);
+    expect(cy.$id('pkg-a').hasClass('pkg-compound')).toBe(true);
     expect(cy.$id('example.com/a-fn1').nonempty()).toBe(true);
+    expect(cy.$id('example.com/a-fn1').data('parent')).toBe('pkg-a');
     expect(cy.$id('example.com/a-fn2').nonempty()).toBe(true);
     expect(cy.$id('example.com/a-e1').nonempty()).toBe(true);
     expect(result.current.expandedPackages.has('example.com/a')).toBe(true);

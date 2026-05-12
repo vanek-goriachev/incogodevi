@@ -43,6 +43,16 @@ export interface GraphRequestOptions {
   aggregate?: 'auto' | 'package' | 'none';
   include_dead?: boolean;
   scope?: string;
+  /**
+   * `struct`  — restrict a scope=<pkg> response to top-level structs /
+   *             interfaces and package-level vars/consts/funcs (no methods,
+   *             no fields). Used by the FE for the first dbltap on a package.
+   * `members` — return the direct children of `parent` (methods, fields,
+   *             embedded types) so the FE can drill one struct level deeper.
+   */
+  level?: 'struct' | 'members';
+  /** Parent node id for `level=members`. */
+  parent?: string;
 }
 
 /** SSE callback union keyed by event type for type-safe payloads. */
@@ -194,6 +204,12 @@ export class ApiClient {
     }
     if (opts.scope !== undefined && opts.scope !== '') {
       params.set('scope', opts.scope);
+    }
+    if (opts.level !== undefined) {
+      params.set('level', opts.level);
+    }
+    if (opts.parent !== undefined && opts.parent !== '') {
+      params.set('parent', opts.parent);
     }
     const query = params.toString();
     const path = `/api/projects/${encodeURIComponent(projectId)}/graph${query ? `?${query}` : ''}`;

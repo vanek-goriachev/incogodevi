@@ -99,13 +99,21 @@ describe('Landing', () => {
     expect(screen.getByText(/up to 50 MB/i)).toBeInTheDocument();
   });
 
-  it('clicking the drop-zone opens the file picker', async () => {
+  it('keyboard-activating the drop-zone opens the file picker exactly once', async () => {
+    // R4-8: the previous implementation wrapped the file <input> in a <label>
+    // AND wired an explicit onClick that called fileInputRef.current.click().
+    // In a real browser that fired the picker twice (the native label-input
+    // association + the explicit click handler). The fix removed the explicit
+    // click handler, so we now exercise only the keyboard activation path —
+    // pressing Enter on a label[role="button"] still needs the manual relay.
     const user = userEvent.setup();
     renderLanding();
     const input = screen.getByTestId('landing-file-input') as HTMLInputElement;
     const click = vi.spyOn(input, 'click');
-    await user.click(screen.getByTestId('landing-zone'));
-    expect(click).toHaveBeenCalled();
+    const zone = screen.getByTestId('landing-zone');
+    zone.focus();
+    await user.keyboard('{Enter}');
+    expect(click).toHaveBeenCalledTimes(1);
   });
 
   it('shows the dragging style while a file is dragged over the document', async () => {

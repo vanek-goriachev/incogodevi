@@ -22,14 +22,17 @@ import type { Core, NodeSingular, StylesheetStyle } from 'cytoscape';
 import { ALL_NODE_KINDS } from '../../api/types';
 import type { FilterSpec } from './panels/filterSpec';
 
-/** Selectors maintained by this hook; appended to the live stylesheet. */
+/**
+ * Selectors maintained by this hook; appended to the live stylesheet.
+ *
+ * NOTE: the `.hidden` selectors are NOT added here — they live in
+ * `buildStylesheet` (graph-styles.ts) so they are part of the base stylesheet
+ * Cytoscape receives at construction time. Cytoscape 3.x renders ignore a
+ * `display: none` rule attached incrementally via `cy.style().selector(...)`
+ * for elements that were already painted, which is exactly the toggle path
+ * the filters panel uses.
+ */
 const FILTER_STYLE_RULES: StylesheetStyle[] = [
-  {
-    selector: '.hidden',
-    style: {
-      display: 'none',
-    },
-  },
   {
     selector: 'node.match',
     style: {
@@ -90,6 +93,15 @@ export function applyFilters(cy: Core, spec: FilterSpec): void {
       cy.nodes().forEach((node: NodeSingular) => {
         const pkg = node.data('package') as string | undefined;
         if (pkg !== undefined && pkg !== '' && !allowed.has(pkg)) {
+          node.addClass('hidden');
+        }
+      });
+    }
+
+    // ---- 2b. hide external (stdlib / third-party) nodes when requested ----
+    if (spec.hideExternal) {
+      cy.nodes().forEach((node: NodeSingular) => {
+        if (node.data('external') === true) {
           node.addClass('hidden');
         }
       });

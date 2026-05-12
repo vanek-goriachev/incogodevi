@@ -98,6 +98,13 @@ export interface GraphCanvasProps {
    * DOM-level peek at `_cyreg`.
    */
   onCyReady?: (cy: Core | null) => void;
+  /**
+   * Counter that re-runs the initial layout from scratch when bumped. The
+   * value itself is opaque — only changes matter. Used by the top-bar
+   * "relayout" button to reset a manually-disturbed canvas without forcing
+   * the user to refetch the graph.
+   */
+  layoutTrigger?: number;
 }
 
 /**
@@ -114,6 +121,7 @@ export function GraphCanvas({
   selectedNodeId = null,
   rendererOverride = null,
   onCyReady,
+  layoutTrigger = 0,
 }: GraphCanvasProps): JSX.Element {
   ensureLayoutsRegistered();
 
@@ -221,16 +229,27 @@ export function GraphCanvas({
     syncElements(cy, graph, persisted);
     const after = cy.nodes().length;
 
+    // Defensive: re-enable user interaction every time we resync. Some
+    // upstream layouts (cola in particular) can leave the core in a half-
+    // initialised state after a hot reload where panning/zooming silently
+    // become no-ops; explicitly re-arming them here is cheap and idempotent.
+    cy.userPanningEnabled(true);
+    cy.userZoomingEnabled(true);
+    cy.boxSelectionEnabled(false);
+
     // Run a fresh layout only when the topology changed materially or when
     // the canvas was empty before. Drag-induced position updates flow through
     // `usePositionsStorage` and never re-trigger the layout.
     const topologyChanged = before === 0 || Math.abs(after - before) > 0;
-    if (topologyChanged) {
-      runLayout(cy, graph, persisted, reducedMotion);
-    }
+
     // Persist initial positions for any nodes the layout placed for the first
-    // time so subsequent reloads are stable (FR-26).
-    cy.one('layoutstop', () => {
+    // time so subsequent reloads are stable (FR-26). The listener MUST be
+    // registered *before* `runLayout`: the preset-only path (all positions
+    // restored from localStorage) fires `layoutstop` synchronously inside
+    // `cy.layout(...).run()`, so a `cy.one` registered after the call would
+    // miss the event entirely — leaving the viewport unfit and giving the
+    // impression that the canvas has gone unresponsive.
+    const runFitSnapshot = (): void => {
       // If the user grabbed a node mid-animation, the layout's final
       // positions are stale relative to their drop. Skip the snapshot and
       // let `handleDragFree` own the persisted state.
@@ -255,8 +274,70 @@ export function GraphCanvas({
         cy.zoom(minReadableZoom);
         cy.center();
       }
-    });
+    };
+    if (topologyChanged) {
+      cy.one('layoutstop', runFitSnapshot);
+      // R11: defer the layout by one microtask so the sibling MainView
+      // effect that applies filters (which runs AFTER this effect because
+      // parent effects fire after child effects in React) gets a chance to
+      // tag external / filtered nodes with the `.hidden` class BEFORE fcose
+      // starts. Without the defer, the initial fcose includes hidden nodes
+      // as invisible repulsion sources and the visible internal cluster
+      // collapses into a central knot.
+      queueMicrotask(() => {
+        // The cy instance may have been torn down while we were queued.
+        if (cyRef.current !== cy) {
+          return;
+        }
+        runLayout(cy, graph, persisted, reducedMotion);
+      });
+    }
   }, [graph, positions, reducedMotion]);
+
+  // ---- relayout effect: re-run the initial layout when the parent bumps
+  // `layoutTrigger`. The skip-on-mount guard prevents a redundant layout
+  // pass right after the graph effect already ran one for the initial load.
+  const layoutTriggerSeenRef = useRef<number>(layoutTrigger);
+  useEffect(() => {
+    if (layoutTrigger === layoutTriggerSeenRef.current) {
+      return;
+    }
+    layoutTriggerSeenRef.current = layoutTrigger;
+    const cy = cyRef.current;
+    if (cy === null || graph === null || graph.nodes.length === 0) {
+      return;
+    }
+    // Forget the manual-drag memo — the user explicitly asked for a fresh
+    // layout, so the post-layout snapshot may overwrite their drops.
+    userDraggedRef.current = false;
+    cy.batch(() => {
+      cy.nodes().forEach((n) => {
+        n.unlock();
+      });
+    });
+    cy.one('layoutstop', () => {
+      const snap: PositionMap = {};
+      cy.nodes().forEach((n) => {
+        const p = n.position();
+        snap[n.id()] = { x: p.x, y: p.y };
+      });
+      positions.write(snap);
+      cy.fit(visibleEles(cy), 60);
+      const z = cy.zoom();
+      const minReadableZoom = 0.55;
+      if (z < minReadableZoom) {
+        cy.zoom(minReadableZoom);
+        cy.center();
+      }
+    });
+    // R11: restrict the layout to currently visible nodes+edges so
+    // `hideExternal` filtered-out packages don't act as invisible repulsion
+    // sources that collapse the internal cluster into the middle.
+    const eles = visibleEles(cy);
+    const opts = layoutOptionsFor('relayout-button', graph, reducedMotion);
+    (opts as unknown as { eles: unknown }).eles = eles;
+    eles.layout(opts).run();
+  }, [layoutTrigger, graph, positions, reducedMotion]);
 
   // ---- interaction effect: tap, drag-end, hover ----
   useEffect(() => {
@@ -402,7 +483,11 @@ export function GraphCanvas({
 }
 
 /** Diff-and-apply helper: ensures `cy` matches the graph snapshot. */
-function syncElements(cy: Core, graph: Graph, persisted: PositionMap): void {
+function syncElements(
+  cy: Core,
+  graph: Graph,
+  persisted: PositionMap,
+): void {
   const wantNodes = new Map<string, Node>();
   const wantEdges = new Map<string, Edge>();
   for (const n of graph.nodes) {
@@ -415,7 +500,8 @@ function syncElements(cy: Core, graph: Graph, persisted: PositionMap): void {
   cy.batch(() => {
     // Remove stale elements first to free their ids before insertion.
     cy.nodes().forEach((cn) => {
-      if (!wantNodes.has(cn.id())) {
+      const id = cn.id();
+      if (!wantNodes.has(id)) {
         cn.remove();
       }
     });
@@ -426,6 +512,7 @@ function syncElements(cy: Core, graph: Graph, persisted: PositionMap): void {
     });
 
     const additions: ElementDefinition[] = [];
+
     for (const node of wantNodes.values()) {
       const data = enrichNodeData(node);
       const existing = cy.$id(node.id);
@@ -497,6 +584,32 @@ function toggleClass(node: NodeSingular, className: string, on: boolean): void {
   }
 }
 
+/**
+ * Return the currently visible elements (not hidden by `.hidden` /
+ * `.mode-hide-*` / `.collapsed-hidden` / `.contains-internal` classes).
+ *
+ * R11: the initial / relayout fcose passes must ignore nodes the user has
+ * filtered out (e.g. `hideExternal: true`). Otherwise the invisible repulsion
+ * sources crush the remaining internal cluster into a central knot.
+ */
+function visibleEles(cy: Core): ReturnType<Core['collection']> {
+  const hiddenClasses = [
+    'hidden',
+    'mode-hide-live',
+    'mode-hide-dead',
+    'collapsed-hidden',
+    'contains-internal',
+  ];
+  return cy.elements().filter((el) => {
+    for (const c of hiddenClasses) {
+      if (el.hasClass(c)) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
 /** Run the appropriate Cytoscape layout for the current graph snapshot. */
 function runLayout(
   cy: Core,
@@ -510,57 +623,173 @@ function runLayout(
     return;
   }
 
-  // Always start from a fully unlocked state — cola moves every node it sees
-  // and any leftover lock from the previous (fcose-era) entry-row pin would
-  // wedge the constraint solver.
+  // Always start from a fully unlocked state — fcose moves every node it sees
+  // and any leftover lock from a previous entry-row pin would freeze nodes
+  // in the wrong place.
   cy.batch(() => {
     cy.nodes().forEach((n) => {
       n.unlock();
     });
   });
 
-  // Cola is constraint-based — it can hard-guarantee no node overlap
-  // (avoidOverlap), which fcose merely tries heuristically. Combined with
-  // a generous edge length and a small repulsion, this produces an
-  // Obsidian-like spread on dense graphs.
+  // R7: switch the canvas-wide layout to fcose with explicit "spread"
+  // tuning. Real-world Go projects (Xray-core et al.) settled into a tall
+  // narrow column with cola's force model after a few package expansions
+  // because the chains of internal contains/imports edges acted as
+  // attractors with no horizontal counter-force. fcose's combination of
+  // `packComponents`, larger `nodeRepulsion`, longer `idealEdgeLength` and
+  // explicit `gravity`/`gravityRange` produces a balanced 2-D fan-out
+  // instead of a vertical lens.
   //
-  // Large graphs (chi 197, urfave/cli 204) need MUCH more breathing room
-  // than the cola defaults: small nodeSpacing leaves dense clusters that
-  // cola refuses to expand because avoidOverlap is already satisfied.
-  // Bands chosen empirically against multi (28), chi (197), urfave (204).
+  // The expansion code path in `useAggregateExpand.ts` uses R5+R8's compact
+  // settings — that layout runs only over the children of one compound and
+  // must keep the compound bounding box small (R5 spec asserts < ½ viewport)
+  // AND return in under 2 s so the double-click feels responsive (R8 Task A).
+  //
+  // R11: scope the layout to the visible subset so filter-hidden nodes
+  // (hideExternal by default) don't weigh on the force simulation.
+  const eles = visibleEles(cy);
+  const opts = layoutOptionsFor('initial', graph, reducedMotion);
+  (opts as unknown as { eles: unknown }).eles = eles;
+  eles.layout(opts).run();
+}
+
+/** Scope passed to `runLayout` helpers. Mirrors `layoutOptionsFor`. */
+type LayoutScope = 'initial' | 'relayout-button' | 'expansion';
+void (undefined as LayoutScope | undefined);
+
+/**
+ * Build fcose layout options for the given scope. Three scopes are supported:
+ *
+ *   - `'initial'`  — the very first paint. Full canvas, `quality: 'proof'`,
+ *                    `randomize: true`. Expensive but runs once.
+ *   - `'relayout-button'` — the user explicitly asked for a fresh layout via
+ *                    the top-bar "relayout" button OR the "Collapse all" flow
+ *                    drops every expanded member. Same spread tuning as the
+ *                    initial pass since the user accepted the cost.
+ *   - `'expansion'` — scoped to the freshly added compound children from
+ *                    `useAggregateExpand.applyExpansion`. Cheap settings
+ *                    (`quality: 'default'`, `randomize: false`, capped
+ *                    iterations, short animation) so a double-click completes
+ *                    in ≤2s even on a 700-node aggregated canvas (R8 Task A).
+ *
+ * Historical context (R7): initial/relayout and expansion had already been
+ * tuned separately; R8 makes the third path — expansion — cheap enough for
+ * an interactive double-click on Xray-core. See the R8 task brief.
+ */
+export function layoutOptionsFor(
+  scope: 'initial' | 'relayout-button' | 'expansion',
+  graph: Graph,
+  reducedMotion: boolean,
+): LayoutOptions {
+  if (scope === 'expansion') {
+    // R5 compact tuning + R8 interactive tuning: cap `numIter` and drop the
+    // animation budget so fcose returns control to the event loop quickly.
+    // `quality: 'default'` skips the expensive tree-building pass that
+    // `'proof'` runs first. `randomize: false` keeps the pre-placed ring
+    // seed positions (set by applyExpansion) so the children fan out from
+    // the package's old centre without teleporting elsewhere.
+    return {
+      name: 'fcose',
+      animate: reducedMotion ? false : 'end',
+      animationDuration: 250,
+      randomize: false,
+      quality: 'default',
+      numIter: 500,
+      nodeRepulsion: 2500,
+      idealEdgeLength: 60,
+      nestingFactor: 0.1,
+      gravity: 0.4,
+      gravityRangeCompound: 1.5,
+      fit: false,
+    } as unknown as LayoutOptions;
+  }
+
+  // Initial / Relayout (both full-canvas passes): spread the whole canvas.
+  //
+  // R11 retune. The R7 knobs (repulsion 6-9k, idealEdgeLength 120-160) left
+  // Xray-core (~170 visible internal packages after hideExternal, hundreds
+  // of cross-imports) as a central hairball: label-bearing compound nodes
+  // ("splithttp (288)", "internet (380)") were placed shoulder-to-shoulder
+  // because fcose was computing collisions against the raw node rectangles
+  // (label-free) and the pairwise repulsion was two orders of magnitude
+  // below what this edge density needs.
+  //
+  // Root-cause findings (R11):
+  //   1. `nodeDimensionsIncludeLabels` was not set → fcose ignored the
+  //      label-sized bounding box. Turning it ON forces repulsion to respect
+  //      the actual visible footprint of adaptive-width package nodes.
+  //   2. `packComponents: true` was a legacy choice for multi-component
+  //      graphs; Xray-core is effectively one strongly connected component,
+  //      so component packing only compresses the layout further. Disabled.
+  //   3. `nodeRepulsion` at 6-9k is two orders of magnitude under the
+  //      density fcose needs for this edge count. Bumped to 120k-500k.
+  //   4. `idealEdgeLength` at 120-160 is shorter than the diameter of a
+  //      label-sized package node, which physically prevents neighbours from
+  //      separating. Raised to 400-700.
+  //   5. `gravity` at 0.25 was actively pulling everything back to the
+  //      centroid after repulsion pushed it apart. Dropped to 0.02.
+  //   6. `edgeElasticity` lowered to 0.01 so the dense spring network does
+  //      not snap the repulsion-inflated graph back into a knot.
+  //
+  // Validated empirically on Xray-core (see r11-layout-spread.spec.ts):
+  //   initial layout → nnRatio=1.79, overlap=0, coverage ~2.4x/3.1x viewport
+  //   after relayout → nnRatio=2.15, overlap=0, coverage ~3.7x/5.3x viewport
+  // The >1.0 coverage is fine — the zoom-cap fit lets the user pan a graph
+  // larger than the viewport, which is the correct UX for 170+ packages.
+  //
+  // Rejected hypotheses: (a) lowering gravity alone did not suffice without
+  // repulsion bumps; (b) swapping to cose-bilkent was not needed once the
+  // repulsion scale was right; (c) `eles` scoping was required for
+  // filter-hidden external packages — without it, 500 invisible nodes were
+  // still crushing the visible cluster (see visibleEles helper).
   const n = graph.nodes.length;
   const big = n > 80;
   const huge = n > 150;
-  const baseLayoutOpts = {
-    name: 'cola',
+  return {
+    name: 'fcose',
     animate: !reducedMotion,
-    refresh: 1,
-    maxSimulationTime: huge ? 8000 : big ? 5500 : 3500,
-    ungrabifyWhileSimulating: false,
-    // We disable cola's auto-fit — for big graphs whose natural shape is a
-    // long lens, the fit zooms out so far that nodes become microscopic.
-    // The post-layout snapshot handler in the graph effect performs a
-    // zoom-capped fit instead so labels stay legible.
+    animationDuration: 600,
+    randomize: true,
+    quality: 'proof',
+    // R11 — honour label-sized node footprints when computing collisions.
+    nodeDimensionsIncludeLabels: true,
+    uniformNodeDimensions: false,
+    // R11 iter2: fcose `nodeRepulsion` is interpreted relative to the
+    // pairwise spring stiffness, so on a dense many-edged graph the earlier
+    // 25k-45k values were still losing to the aggregate spring force. Bump
+    // to a range that visibly wins on Xray-core (~170 visible packages with
+    // cross-imports) without driving the graph to diverge — diverging is
+    // prevented by keeping gravity finite and by fcose's damping term.
+    nodeRepulsion: huge ? 500000 : big ? 350000 : 200000,
+    idealEdgeLength: huge ? 700 : big ? 550 : 400,
+    edgeElasticity: 0.01,
+    nodeSeparation: 450,
+    // Near-zero gravity so repulsion actually wins and the graph occupies
+    // the available canvas instead of collapsing into a central knot.
+    // fcose's damping term still prevents the layout from diverging.
+    gravity: 0.02,
+    gravityRange: 5.0,
+    gravityCompound: 0.3,
+    gravityRangeCompound: 1.5,
+    nestingFactor: 0.1,
+    numIter: 4000,
+    // Xray-core is a single strongly connected component; component packing
+    // only compresses the already-dense cluster. Leave it off so fcose uses
+    // its natural force-directed spread.
+    packComponents: false,
+    // Compound parents (expanded packages) lay out their children in a tile
+    // so the box stays compact even when the surrounding canvas is spread
+    // wide.
+    tile: true,
+    tilingPaddingHorizontal: 20,
+    tilingPaddingVertical: 10,
+    // We disable fcose's auto-fit — the post-layout snapshot handler in the
+    // graph effect performs a zoom-capped fit instead so labels stay legible
+    // on long-lens graphs.
     fit: false,
     padding: 60,
-    // nodeSpacing tuned per band. Big/huge graphs need more breathing room
-    // before avoidOverlap freezes positions.
-    nodeSpacing: huge ? 60 : big ? 40 : 20,
-    edgeLength: huge ? 320 : big ? 240 : 160,
-    edgeSymDiffLength: huge ? 320 : big ? 240 : 160,
-    avoidOverlap: true,
-    handleDisconnected: true,
-    convergenceThreshold: 0.005,
-    randomize: true,
-    // More preliminary unconstrained iterations let the simulation spread
-    // before the overlap constraint kicks in and freezes positions.
-    unconstrIter: huge ? 60 : big ? 40 : 20,
-    userConstIter: 15,
-    allConstIter: 30,
-    flow: undefined, // physics layout, not hierarchical
-    infinite: false,
-  };
-  cy.layout(baseLayoutOpts as unknown as LayoutOptions).run();
+  } as unknown as LayoutOptions;
 }
 
 /**

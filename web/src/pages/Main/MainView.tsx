@@ -60,11 +60,13 @@ import {
   type FilterSpec,
 } from './panels/filterSpec';
 import { InfoPanel } from './panels/InfoPanel';
+import { LegendPanel } from './panels/LegendPanel';
 import { useAggregateExpand } from './useAggregateExpand';
 import { useCollapse } from './useCollapse';
 import { useDeadMode } from './useDeadMode';
-import { useFilters } from './useFilters';
+import { applyFilters, useFilters } from './useFilters';
 import { useGraphData } from './useGraphData';
+import { usePositionsStorage } from './usePositionsStorage';
 import { useReanalyze } from './useReanalyze';
 import type { EntryPointSpec, Graph, Node } from '../../api/types';
 
@@ -176,6 +178,17 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
   const collapse = useCollapse(cy, projectId);
   const deadMode = useDeadMode(projectId, cy);
 
+  // Top-bar "relayout" gesture (Bug 4): drop the persisted position map for
+  // the current project and bump a counter so `GraphCanvas` re-runs its
+  // initial layout from scratch. Useful after a few package expansions or
+  // manual drags have left the canvas messy.
+  const positionsStore = usePositionsStorage(projectId);
+  const [layoutTrigger, setLayoutTrigger] = useState<number>(0);
+  const handleRelayout = useCallback(() => {
+    positionsStore.clear();
+    setLayoutTrigger((n) => n + 1);
+  }, [positionsStore]);
+
   const handleExpandError = useCallback(
     (message: string) => {
       showToast(message, 'error');
@@ -188,7 +201,7 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
     },
     [showToast],
   );
-  useAggregateExpand({
+  const aggregateExpand = useAggregateExpand({
     apiClient,
     projectId,
     cy,
@@ -196,7 +209,25 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
     reducedMotion,
     onError: handleExpandError,
     onInfo: handleExpandInfo,
+    onRequestRelayout: handleRelayout,
   });
+
+  // Top-bar "Collapse all" gesture (R4-10). Iterates the live expanded set
+  // and collapses each in order. Each collapsePackage call mutates the live
+  // set asynchronously through React state, but the snapshot here is good
+  // enough since we never re-add packages mid-iteration.
+  const handleCollapseAll = useCallback(() => {
+    const snapshot = Array.from(aggregateExpand.expandedPackages);
+    if (snapshot.length === 0) {
+      return;
+    }
+    for (const pkg of snapshot) {
+      aggregateExpand.collapsePackage(pkg);
+    }
+    // After clearing all expanded children, drop any leftover member positions
+    // and re-flow the canvas so the now-aggregated view looks tidy again.
+    handleRelayout();
+  }, [aggregateExpand, handleRelayout]);
 
   const handleExportError = useCallback(
     (message: string) => {
@@ -231,6 +262,20 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
   useEffect(() => {
     deadMode.refresh();
   }, [deadMode, state]);
+
+  // R9 fix: `useFilters` re-runs on [cy, filterSpec], but the initial paint
+  // order on a fresh project is: cy mounts empty → useFilters runs on 0
+  // nodes (no-op) → GraphCanvas's graph effect populates cy via syncElements
+  // → externals are now in cy but the filter hook has no trigger to
+  // re-evaluate, so `hideExternal` never takes effect on first paint.
+  // Bridging the topology dimension here mirrors the deadMode.refresh() fix
+  // above and makes sure every SSE chunk gets re-filtered.
+  useEffect(() => {
+    if (cy === null) {
+      return;
+    }
+    applyFilters(cy, filterSpec);
+  }, [cy, filterSpec, state]);
 
   // Reset selection on project change so the right-rail does not dangle on
   // a stale id.
@@ -368,6 +413,27 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
             >
               {'\u21bb refresh'}
             </button>
+            <button
+              type="button"
+              className="main-view__refresh"
+              onClick={handleRelayout}
+              data-testid="main-relayout"
+              aria-label="Re-run layout from scratch"
+              title="Discard current positions and re-run the layout"
+            >
+              {'\u21bb relayout'}
+            </button>
+            <button
+              type="button"
+              className="main-view__refresh"
+              onClick={handleCollapseAll}
+              data-testid="main-collapse-all"
+              aria-label="Collapse every expanded package back to its aggregated node"
+              title="Collapse every expanded package"
+              disabled={aggregateExpand.expandedPackages.size === 0}
+            >
+              {'\u2922 collapse all'}
+            </button>
           </div>
         }
         leftRail={
@@ -384,6 +450,7 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
               graph={effectiveGraph}
               value={filterSpec}
               onChange={handleFilterChange}
+              cy={cy}
             />
           </div>
         }
@@ -419,6 +486,7 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
               backgroundColor={themeTokens.bg}
               onError={handleExportError}
             />
+            <LegendPanel />
           </div>
         }
       >
@@ -431,14 +499,17 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
           onSelectNode={handleSelectNode}
           selectedNodeId={selectedNodeId}
           onCyReady={handleCyReady}
+          layoutTrigger={layoutTrigger}
         />
         <ContextMenu
           cy={cy}
           collapsedIds={collapse.collapsedIds}
+          expandedPackages={aggregateExpand.expandedPackages}
           onShowInfo={handleSelectNode}
           onAddEntry={handleAddEntryFromInfo}
           onCollapse={collapse.collapse}
           onExpand={collapse.expand}
+          onCollapsePackage={aggregateExpand.collapsePackage}
           onCopyPath={handleCopyResult}
         />
         {isReanalyzing ? (

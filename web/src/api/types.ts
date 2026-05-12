@@ -43,6 +43,33 @@ export interface Node {
    * it only on aggregated package nodes.
    */
   child_count?: number;
+  /**
+   * True for nodes that belong to a package outside the user's main module
+   * (stdlib or third-party deps loaded transitively via packages.Load
+   * NeedDeps). Used to optionally hide such nodes via the Filters panel
+   * and to short-circuit "expand" double-click on aggregated package nodes
+   * that have no project symbols to scope into.
+   */
+  external?: boolean;
+  /**
+   * Number of unreachable children rolled up into a package-aggregated node
+   * (R4-5). Populated by the backend only on aggregated `kind: package` nodes;
+   * absent everywhere else. Used by the frontend to surface a partial-dead
+   * marker without re-counting client-side.
+   */
+  dead_count?: number;
+  /**
+   * True when an aggregated package node owns at least one — but not all —
+   * dead children (R4-5). The frontend renders these with an amber dashed
+   * border so the package reads "contains dead code" without being demoted
+   * to fully dead.
+   */
+  partial_dead?: boolean;
+  /**
+   * True when every child of an aggregated package node is dead (R4-5).
+   * Renders with a heavier dashed border + faded fill.
+   */
+  fully_dead?: boolean;
 }
 
 export interface Edge {
@@ -113,6 +140,16 @@ export const ALL_NODE_KINDS: readonly NodeKind[] = [
   'field',
   'var',
   'const',
+];
+
+/** Edge kinds in their canonical render order (used by the legend panel). */
+export const ALL_EDGE_KINDS: readonly EdgeKind[] = [
+  'imports',
+  'contains',
+  'calls',
+  'embeds',
+  'implements',
+  'references',
 ];
 
 export interface Filters {

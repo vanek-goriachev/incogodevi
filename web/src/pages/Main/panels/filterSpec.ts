@@ -17,20 +17,32 @@ export type KindVisibility = Record<NodeKind, boolean>;
 /**
  * Persisted client-side filter state.
  *
- *   - `kinds`     map of NodeKind → visible? (default: every kind on)
- *   - `packages`  in `subset` mode only nodes whose package is in `selected`
- *                 are visible; in `all` mode every package is visible
- *   - `find`      substring match against node `name` and fully-qualified
- *                 `id` (case-insensitive); empty string means no highlight
+ *   - `kinds`         map of NodeKind → visible? (default: every kind on)
+ *   - `packages`      in `subset` mode only nodes whose package is in `selected`
+ *                     are visible; in `all` mode every package is visible
+ *   - `find`          substring match against node `name` and fully-qualified
+ *                     `id` (case-insensitive); empty string means no highlight
+ *   - `hideExternal`  when true, every node whose `external` flag is set
+ *                     (stdlib / third-party packages pulled in transitively)
+ *                     is hidden from the canvas
  */
 export interface FilterSpec {
   v: 1;
   kinds: KindVisibility;
   packages: { mode: 'all' | 'subset'; selected: string[] };
   find: string;
+  hideExternal: boolean;
 }
 
-/** Sentinel returned by `defaultFilterSpec()`. */
+/**
+ * Sentinel returned by `defaultFilterSpec()`.
+ *
+ * `hideExternal` defaults to `true` (R9) — on real Go projects the stdlib +
+ * third-party transitive deps dominate the canvas (Xray-core has 521 external
+ * package nodes against 172 local), making the user's own structure invisible
+ * on the first paint. Surfacing externals is one toggle away in the panel; the
+ * inverse default left the canvas reading as a hairball.
+ */
 export function defaultFilterSpec(): FilterSpec {
   const kinds = {} as KindVisibility;
   for (const k of ALL_NODE_KINDS) {
@@ -41,6 +53,7 @@ export function defaultFilterSpec(): FilterSpec {
     kinds,
     packages: { mode: 'all', selected: [] },
     find: '',
+    hideExternal: true,
   };
 }
 
@@ -78,12 +91,18 @@ export function normalizeFilterSpec(input: unknown): FilterSpec {
   if (typeof obj.find === 'string') {
     base.find = obj.find;
   }
+  if (typeof obj.hideExternal === 'boolean') {
+    base.hideExternal = obj.hideExternal;
+  }
   return base;
 }
 
 /** Convenience equality used by the visibility hook to skip no-op updates. */
 export function filterSpecEqual(a: FilterSpec, b: FilterSpec): boolean {
   if (a.find !== b.find) {
+    return false;
+  }
+  if (a.hideExternal !== b.hideExternal) {
     return false;
   }
   if (a.packages.mode !== b.packages.mode) {
