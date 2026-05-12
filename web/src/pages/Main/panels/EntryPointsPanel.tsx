@@ -294,6 +294,11 @@ function AddEntryDialog({
   const [query, setQuery] = useState<string>('');
   const [fqn, setFqn] = useState<string>('');
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // Track where the current pointer gesture began so backdrop-click dismissal
+  // ignores drags that started on the dialog content (e.g. text drag-select
+  // inside the FQN input that releases on the padded backdrop area). Without
+  // this guard the dialog would dismiss mid-typing — see PR fixing Bug B.
+  const downOnBackdropRef = useRef<boolean>(false);
 
   // Focus the search input on mount for keyboard-first interaction.
   useEffect(() => {
@@ -373,8 +378,16 @@ function AddEntryDialog({
     <div
       className="entry-dialog__backdrop"
       role="presentation"
+      onMouseDown={(evt) => {
+        // Record whether the gesture starts on the backdrop itself. Anything
+        // that started inside the dialog (input drag-selects, slow clicks)
+        // sets this to `false` via the dialog's own onMouseDown below.
+        downOnBackdropRef.current = evt.target === evt.currentTarget;
+      }}
       onClick={(evt) => {
-        if (evt.target === evt.currentTarget) {
+        const startedOnBackdrop = downOnBackdropRef.current;
+        downOnBackdropRef.current = false;
+        if (startedOnBackdrop && evt.target === evt.currentTarget) {
           onCancel();
         }
       }}
@@ -386,6 +399,12 @@ function AddEntryDialog({
         aria-modal="true"
         aria-labelledby="entry-dialog-title"
         data-testid="entry-dialog"
+        onMouseDown={() => {
+          // Any pointerdown that lands inside the dialog must NOT be classified
+          // as a backdrop click — even when the eventual mouseup escapes the
+          // dialog bounds (text drag-select releasing on the padded backdrop).
+          downOnBackdropRef.current = false;
+        }}
       >
         <header className="entry-dialog__head">
           <h4 id="entry-dialog-title" className="entry-dialog__title">

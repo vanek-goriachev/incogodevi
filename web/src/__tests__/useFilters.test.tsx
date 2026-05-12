@@ -92,6 +92,45 @@ describe('applyFilters', () => {
     cy.destroy();
   });
 
+  it('matches by receiver-aware FQN (pkg#Recv.Method) when the user types a qualified name', () => {
+    // Mirrors a real graph: a struct Server with a method Run wired through a
+    // contains edge. The node id is an opaque hash on the wire, so searching
+    // "Server.Run" cannot rely on id substrings — it has to reconstruct the
+    // FQN through the cy contains edge.
+    const opts: cytoscape.CytoscapeOptions = {
+      elements: [
+        { group: 'nodes', data: { id: 'sid-hash', name: 'Server', kind: 'struct', package: 'api' } },
+        { group: 'nodes', data: { id: 'mid-hash', name: 'Run', kind: 'method', package: 'api' } },
+        { group: 'edges', data: { id: 'ce', source: 'sid-hash', target: 'mid-hash', kind: 'contains' } },
+      ],
+      headless: true,
+      styleEnabled: true,
+    };
+    (opts as unknown as { renderer: { name: string } }).renderer = { name: 'null' };
+    const cy = cytoscape(opts);
+    applyFilters(cy, { ...defaultFilterSpec(), find: 'Server.Run' });
+    expect(cy.$id('mid-hash').hasClass('match')).toBe(true);
+    expect(cy.$id('sid-hash').hasClass('match')).toBe(false);
+    cy.destroy();
+  });
+
+  it('matches dynamically added nodes (post expandStructMembers) on re-apply', () => {
+    const cy = makeCy();
+    // Initial highlight: nothing should match "DynamicMethod" yet.
+    applyFilters(cy, { ...defaultFilterSpec(), find: 'DynamicMethod' });
+    cy.nodes().forEach((n) => {
+      expect(n.hasClass('match')).toBe(false);
+    });
+    // Simulate an expand: add a new method (and its contains edge) to cy.
+    cy.add([
+      { group: 'nodes', data: { id: 'late', name: 'DynamicMethod', kind: 'method', package: 'api' } },
+      { group: 'edges', data: { id: 'late-ce', source: 'n2', target: 'late', kind: 'contains' } },
+    ]);
+    applyFilters(cy, { ...defaultFilterSpec(), find: 'Handler.DynamicMethod' });
+    expect(cy.$id('late').hasClass('match')).toBe(true);
+    cy.destroy();
+  });
+
   it('keeps already-hidden nodes hidden — find never resurrects them', () => {
     const cy = makeCy();
     applyFilters(cy, {
