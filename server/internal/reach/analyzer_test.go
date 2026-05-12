@@ -137,9 +137,12 @@ func TestMarkDisconnected(t *testing.T) {
 	}
 }
 
-func TestMarkContainsBidirectional(t *testing.T) {
-	// Entry on a method (m) keeps the owning struct (s) and its package (p)
-	// alive even though calls/references would never lead there.
+func TestMarkContainsParentToChildOnly(t *testing.T) {
+	// Contains is unidirectional (parent → child) since R4-6: reaching a
+	// child must NOT pull in its container or its container's siblings,
+	// otherwise a single live method snowballs through its struct, package,
+	// and every other symbol the package owns. Reaching the package, on the
+	// other hand, exposes every contained member as live.
 	g := graphFromNodes(
 		[]domain.Node{
 			node("p", "pkg", domain.NodeKindPackage, "pkg"),
@@ -153,13 +156,25 @@ func TestMarkContainsBidirectional(t *testing.T) {
 			edge("p", "orphan", domain.EdgeKindContains),
 		},
 	)
+	// Entry on the method only keeps the method itself alive.
 	if err := reach.New(nil).Mark(g, []string{"m"}); err != nil {
 		t.Fatalf("Mark: %v", err)
 	}
-	want := map[string]bool{"p": true, "s": true, "m": true, "orphan": true}
+	wantFromMethod := map[string]bool{"p": false, "s": false, "m": true, "orphan": false}
 	for _, n := range g.Nodes {
-		if n.Reachable != want[n.ID] {
-			t.Fatalf("node %s: reachable=%t want=%t", n.ID, n.Reachable, want[n.ID])
+		if n.Reachable != wantFromMethod[n.ID] {
+			t.Fatalf("entry=m: node %s reachable=%t want=%t", n.ID, n.Reachable, wantFromMethod[n.ID])
+		}
+	}
+
+	// Entry on the package keeps every contained member alive.
+	if err := reach.New(nil).Mark(g, []string{"p"}); err != nil {
+		t.Fatalf("Mark: %v", err)
+	}
+	wantFromPackage := map[string]bool{"p": true, "s": true, "m": true, "orphan": true}
+	for _, n := range g.Nodes {
+		if n.Reachable != wantFromPackage[n.ID] {
+			t.Fatalf("entry=p: node %s reachable=%t want=%t", n.ID, n.Reachable, wantFromPackage[n.ID])
 		}
 	}
 }
@@ -363,6 +378,38 @@ func TestDeadCodeIgnoresPackages(t *testing.T) {
 	}
 	if report.EntriesCount != 1 || report.Entries[0].FQN != "p.Dead" {
 		t.Fatalf("expected single Dead entry, got %+v", report.Entries)
+	}
+}
+
+func TestDeadCodeIgnoresExternal(t *testing.T) {
+	g := graphFromNodes(
+		[]domain.Node{
+			node("p", "p", domain.NodeKindPackage, "p"),
+			node("dead", "DeadOwn", domain.NodeKindFunc, "p"),
+			{
+				ID:       "ext",
+				Name:     "DeadExt",
+				Kind:     domain.NodeKindFunc,
+				Package:  "fmt",
+				File:     "fmt/print.go",
+				Line:     1,
+				Exported: true,
+				External: true,
+			},
+		},
+		nil,
+	)
+	if err := reach.New(nil).Mark(g, nil); err != nil {
+		t.Fatalf("Mark: %v", err)
+	}
+	report := reach.New(nil).DeadCode(g)
+	for _, e := range report.Entries {
+		if e.Package == "fmt" || e.Name == "DeadExt" {
+			t.Fatalf("external node leaked into report: %+v", e)
+		}
+	}
+	if report.EntriesCount != 1 || report.Entries[0].FQN != "p.DeadOwn" {
+		t.Fatalf("expected single internal dead entry, got %+v", report.Entries)
 	}
 }
 

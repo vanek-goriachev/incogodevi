@@ -14,6 +14,10 @@ type ReducedPackage struct {
 	PkgPath string
 	Name    string
 	Module  string
+	// IsMain mirrors packages.Package.Module.Main: true when the package
+	// belongs to the user's main module, false for stdlib / third-party
+	// dependencies pulled in via NeedDeps.
+	IsMain  bool
 	Imports []string
 	Types   []ReducedType
 	Funcs   []ReducedFunc
@@ -74,7 +78,7 @@ type ReducedValue struct {
 // independently of domain.CurrentSchemaVersion because changes to the gob
 // layout do not necessarily imply changes to the rest of the API surface.
 // A mismatch makes ReadParsedBlob behave like a cache miss.
-const blobSchemaVersion = 1
+const blobSchemaVersion = 2
 
 // blobEnvelope is the on-disk gob frame: a version header followed by the
 // reduced package list. Decoding into this struct lets callers detect schema

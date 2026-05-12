@@ -19,6 +19,11 @@ type LivePackage struct {
 	TypesInfo *types.Info
 	Fset      *token.FileSet
 	Syntax    []*ast.File
+	// IsMain reports whether the package belongs to the user's main module.
+	// Packages loaded transitively via packages.Load NeedDeps (stdlib and
+	// third-party dependencies) have IsMain=false; the graph builder uses
+	// this to mark their nodes External.
+	IsMain bool
 }
 
 // fromPackages converts a packages.Package into the lighter LivePackage
@@ -32,5 +37,6 @@ func fromPackages(p *packages.Package) LivePackage {
 		TypesInfo: p.TypesInfo,
 		Fset:      p.Fset,
 		Syntax:    p.Syntax,
+		IsMain:    p.Module != nil && p.Module.Main,
 	}
 }
