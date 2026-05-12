@@ -11,15 +11,14 @@
  *     shoulder, edges cross into a dense knot, and expanded packages get
  *     flung to the periphery because the central cluster has no room.
  *
- * Assertions (all empirical, read from `window.__cy`):
- *   - top-level package nodes cover ≥ 60 % of the canvas width and ≥ 40 %
- *     of the canvas height (pre-R11 baseline: ~20 %);
- *   - the average nearest-neighbour centre distance is at least 1.3x the
- *     median node diameter (i.e. nodes are not stacked);
- *   - zero top-level-node overlaps (fcose avoidOverlap contract).
- *
- * Also reasserts the R8 Task A invariant: a double-click expansion
- * completes in ≤ 2 s on Xray and does not trigger a full initial layout.
+ * Multirow follow-up (Bug 1 / Bug 2 / Bug 3) — once the canvas-wide
+ * positioner became reach-depth, a dense layer of 60+ packages stretched
+ * the layout to 50 000 px wide, the zoom-cap fit shrank everything below
+ * legibility, and the user reported "edges invisible on first render".
+ * This spec now also locks down:
+ *   - no layer wider than `LAYER_WIDTH_BUDGET` px (multi-row wrap engaged);
+ *   - cross-package edges visible on first render and after Relayout;
+ *   - expanded compounds do not overlap after Relayout (Bug 3 fix).
  *
  * Screenshots are written under project/test-evidence/R11/ so a human can
  * audit the before/after visual state alongside the numbers.
@@ -36,6 +35,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..', '..');
 const screenshotDir = path.join(repoRoot, 'test-evidence', 'R11');
 fs.mkdirSync(screenshotDir, { recursive: true });
+
+/**
+ * Maximum layer width (in layout/model units) the multirow positioner is
+ * permitted to produce. Pre-fix Xray-core stretched to ~55 000 px on the
+ * widest layer; the wrap kicks in at maxNodesPerRow=14 so even the densest
+ * tier should now stay well under 5 000 px.
+ */
+const LAYER_WIDTH_BUDGET = 8_000;
 
 async function shot(page: Page, label: string): Promise<void> {
   await page.screenshot({
@@ -227,6 +234,132 @@ async function collectSpreadMetrics(page: Page): Promise<SpreadMetrics> {
   });
 }
 
+interface LayerWidthDiag {
+  /** Largest model-coordinate horizontal span on any single layer/row. */
+  maxRowSpan: number;
+  /** Distinct layer y-coordinates rounded to integer model units. */
+  distinctLayers: number;
+  /** Maximum number of nodes that share a single row y-coordinate. */
+  largestRowSize: number;
+  /** Top-level model bbox (helps gauge whether wrap kept the canvas finite). */
+  bboxW: number;
+  bboxH: number;
+}
+
+async function collectLayerWidthDiag(page: Page): Promise<LayerWidthDiag> {
+  return await page.evaluate(() => {
+    interface CyBB { x1: number; y1: number; x2: number; y2: number; w: number; h: number }
+    interface CyNode {
+      id: () => string;
+      isChild: () => boolean;
+      parent: () => { length: number };
+      hasClass: (c: string) => boolean;
+      visible: () => boolean;
+      position: () => { x: number; y: number };
+      boundingBox: () => CyBB;
+    }
+    interface CyApi { nodes: () => { toArray: () => CyNode[] } }
+    const cy = (window as unknown as { __cy?: CyApi }).__cy;
+    if (cy === undefined) {
+      return { maxRowSpan: 0, distinctLayers: 0, largestRowSize: 0, bboxW: 0, bboxH: 0 };
+    }
+    const tops = cy.nodes().toArray().filter((n) => {
+      if (n.hasClass('hidden')) return false;
+      if (n.isChild() && n.parent().length > 0) return false;
+      return n.visible();
+    });
+    if (tops.length === 0) {
+      return { maxRowSpan: 0, distinctLayers: 0, largestRowSize: 0, bboxW: 0, bboxH: 0 };
+    }
+    // Group by rounded y so wrapped sub-rows count as separate layers.
+    const byY = new Map<number, CyNode[]>();
+    let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+    for (const n of tops) {
+      const pos = n.position();
+      const yKey = Math.round(pos.y);
+      let bucket = byY.get(yKey);
+      if (bucket === undefined) {
+        bucket = [];
+        byY.set(yKey, bucket);
+      }
+      bucket.push(n);
+      const bb = n.boundingBox();
+      if (bb.x1 < xMin) xMin = bb.x1;
+      if (bb.x2 > xMax) xMax = bb.x2;
+      if (bb.y1 < yMin) yMin = bb.y1;
+      if (bb.y2 > yMax) yMax = bb.y2;
+    }
+    let maxRowSpan = 0;
+    let largestRowSize = 0;
+    for (const bucket of byY.values()) {
+      if (bucket.length > largestRowSize) largestRowSize = bucket.length;
+      if (bucket.length < 2) continue;
+      let rxMin = Infinity, rxMax = -Infinity;
+      for (const n of bucket) {
+        const bb = n.boundingBox();
+        if (bb.x1 < rxMin) rxMin = bb.x1;
+        if (bb.x2 > rxMax) rxMax = bb.x2;
+      }
+      const span = rxMax - rxMin;
+      if (span > maxRowSpan) maxRowSpan = span;
+    }
+    return {
+      maxRowSpan,
+      distinctLayers: byY.size,
+      largestRowSize,
+      bboxW: xMax - xMin,
+      bboxH: yMax - yMin,
+    };
+  });
+}
+
+interface CompoundOverlapDiag {
+  compoundCount: number;
+  overlapPairs: number;
+  widestCompound: number;
+}
+
+async function collectCompoundOverlapDiag(page: Page): Promise<CompoundOverlapDiag> {
+  return await page.evaluate(() => {
+    interface CyBB { x1: number; y1: number; x2: number; y2: number; w: number; h: number }
+    interface CyNode {
+      id: () => string;
+      isParent: () => boolean;
+      isChild: () => boolean;
+      parent: () => { length: number };
+      hasClass: (c: string) => boolean;
+      boundingBox: () => CyBB;
+    }
+    interface CyApi { nodes: (sel?: string) => { toArray: () => CyNode[] } }
+    const cy = (window as unknown as { __cy?: CyApi }).__cy;
+    if (cy === undefined) {
+      return { compoundCount: 0, overlapPairs: 0, widestCompound: 0 };
+    }
+    const compounds = cy.nodes().toArray().filter((n) => n.isParent() && !n.hasClass('hidden'));
+    if (compounds.length === 0) {
+      return { compoundCount: 0, overlapPairs: 0, widestCompound: 0 };
+    }
+    let overlapPairs = 0;
+    let widest = 0;
+    const boxes = compounds.map((c) => c.boundingBox());
+    for (const b of boxes) {
+      if (b.w > widest) widest = b.w;
+    }
+    for (let i = 0; i < boxes.length; i += 1) {
+      const a = boxes[i];
+      if (a === undefined) continue;
+      for (let j = i + 1; j < boxes.length; j += 1) {
+        const b = boxes[j];
+        if (b === undefined) continue;
+        const ox = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1);
+        const oy = Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1);
+        if (ox > 1 && oy > 1) overlapPairs += 1;
+      }
+    }
+    return { compoundCount: compounds.length, overlapPairs, widestCompound: widest };
+  });
+}
+
 test.describe('R11 layout spread verification', () => {
   test.setTimeout(900_000);
 
@@ -276,6 +409,23 @@ test.describe('R11 layout spread verification', () => {
     console.log(`[R11] initial metrics: ${JSON.stringify(initial)}`);
     appendMetricsLog(`initial ${JSON.stringify(initial)}`);
     expect(initial.nodeCount, 'expected >20 top-level Xray internal packages').toBeGreaterThan(20);
+
+    // Bug 1 fix — no single layer row may stretch beyond LAYER_WIDTH_BUDGET
+    // model units. Pre-fix Xray-core stretched to ~55 000 px; with wrap
+    // engaged the worst row should stay under ~5 000 px.
+    const layerDiag = await collectLayerWidthDiag(page);
+    appendMetricsLog(`layer-diag ${JSON.stringify(layerDiag)}`);
+    expect(
+      layerDiag.maxRowSpan,
+      `Bug 1 regression — widest row spans ${String(layerDiag.maxRowSpan)} px (budget ${String(LAYER_WIDTH_BUDGET)})`,
+    ).toBeLessThanOrEqual(LAYER_WIDTH_BUDGET);
+    // With Xray-core internals exceeding maxNodesPerRow=14 the wrap MUST
+    // have engaged on at least one layer — distinctLayers strictly exceeds
+    // the BFS-depth of the source graph.
+    expect(
+      layerDiag.distinctLayers,
+      'multirow wrap did not engage on Xray-core',
+    ).toBeGreaterThan(6);
 
     // Reach-depth layout assertions (replaces the R11 fcose spread metrics).
     //   (a) every entry-point node sits on the top row (same y, within 1 px).
@@ -337,6 +487,12 @@ test.describe('R11 layout spread verification', () => {
       edgeDiag.visibleCrossPkg,
       'Bug 2 regression — no visible inter-package edges on first render',
     ).toBeGreaterThan(0);
+    // Bug 2 stronger guard — at least 50 cross-package edges must be
+    // visible on first render so the dependency mesh actually reads.
+    expect(
+      edgeDiag.visibleCrossPkg,
+      'Bug 2 regression — too few visible inter-package edges',
+    ).toBeGreaterThanOrEqual(50);
 
     // ---- Expand two mid-sized packages by double-click ----
     const expansionTargets = await page.evaluate(() => {
@@ -399,16 +555,22 @@ test.describe('R11 layout spread verification', () => {
 
     await shot(page, 'r11-xray-after-expansions');
 
-    // ---- R12 idempotence check: snapshot positions, press Relayout, ----
-    // ----   snapshot again, assert L∞ delta ≤ 1 px per node.        ----
-    const snapBefore = await snapshotTopLevelPositions(page);
+    // ---- R12 idempotence check: press Relayout twice and assert       ----
+    // ---- positions are deeply equal between the two passes.            ----
+    //
+    // After an expansion, compounds gain a different `outerWidth()` than
+    // the aggregated nodes they replaced. The FIRST Relayout flows that
+    // new width into the global positioner — by design positions will
+    // therefore differ from the post-expansion snapshot. The idempotence
+    // contract is that pressing Relayout AGAIN must produce identical
+    // positions; that is what the user feels as "the button is stable".
     await page.locator('[data-testid="main-relayout"]').click();
     try {
       await waitForLayoutStop(page, { timeout: 5_000 });
     } catch {
       // Preset layout is synchronous — listener may attach after the event.
     }
-    const snapAfter = await snapshotTopLevelPositions(page);
+    const snapBefore = await snapshotTopLevelPositions(page);
 
     const afterRelayout = await collectSpreadMetrics(page);
     console.log(`[R11] after relayout: ${JSON.stringify(afterRelayout)}`);
@@ -422,8 +584,30 @@ test.describe('R11 layout spread verification', () => {
     // does not target the same coverage profile as the fcose spread.
     expect(afterRelayout.nodeCount).toBeGreaterThan(0);
 
-    // Idempotence: every top-level node that existed both before and after
-    // Relayout must sit at (almost) exactly the same model coordinate.
+    // Bug 3 fix — expanded compounds must not overlap their bounding
+    // boxes after Relayout. Pre-PR the positioner ignored compound width
+    // and packed compounds at fixed `minNodeGap`, causing the user's
+    // reported overlay.
+    const compoundDiag = await collectCompoundOverlapDiag(page);
+    appendMetricsLog(`compound-diag ${JSON.stringify(compoundDiag)}`);
+    if (compoundDiag.compoundCount >= 2) {
+      expect(
+        compoundDiag.overlapPairs,
+        `Bug 3 regression — ${String(compoundDiag.overlapPairs)} compound bbox overlap pair(s) after Relayout`,
+      ).toBe(0);
+    }
+
+    // Press Relayout again and verify positions match the first relayout
+    // pass to ≤1 px — the "same input always produces the same pixels"
+    // invariant from PR #52.
+    await page.locator('[data-testid="main-relayout"]').click();
+    try {
+      await waitForLayoutStop(page, { timeout: 5_000 });
+    } catch {
+      // Preset layout fires synchronously inside `cy.layout(...).run()`.
+    }
+    const snapAfter = await snapshotTopLevelPositions(page);
+
     const maxDelta = computeMaxDelta(snapBefore, snapAfter);
     appendMetricsLog(`relayout-idempotence maxDelta=${String(maxDelta)}`);
     expect(

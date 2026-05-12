@@ -11,8 +11,17 @@
  *      node's *parents-on-layer-(k-1)* barycenter — i.e. the single-pass
  *      Sugiyama-style heuristic. Nodes without any parent on the previous
  *      layer fall back to id-alphabetical (a back-edge can carry them).
- *   4. y for layer k = topPadding + k * layerGap.
- *   5. Nodes unreachable from any entry are packed into a compact square
+ *   4. y for layer k = topPadding + k * layerGap. When a layer would not
+ *      fit on a single row (more than `maxNodesPerRow` nodes), it wraps
+ *      onto multiple rows separated by `rowGap` (< `layerGap`) so the
+ *      visual hierarchy "rows inside a layer, gap between layers" still
+ *      reads at a glance. Subsequent layers are pushed down by the actual
+ *      row count of the previous layer, not the raw `layerGap`.
+ *   5. Optional per-node `width` overrides `minNodeGap` for any adjacent
+ *      pair whose half-widths plus a small visual buffer exceed it. This
+ *      prevents two wide compound parents from overlapping their bounding
+ *      boxes when expanded packages enter the canvas-wide layer.
+ *   6. Nodes unreachable from any entry are packed into a compact square
  *      grid in the lower-right of the reachable region so they read as
  *      "outside the call tree" without flooding the canvas.
  *
@@ -26,6 +35,14 @@ export interface LayoutNode {
   id: string;
   /** Whether this node is an entry-point. Drives layer-0 selection. */
   isEntry?: boolean;
+  /**
+   * Optional render width (in the same units as `canvasWidth`). When
+   * provided, the positioner uses `(wA + wB)/2 + buffer` as the minimum
+   * horizontal centre-to-centre distance between adjacent nodes instead of
+   * the flat `minNodeGap`. Callers reading Cytoscape's `outerWidth()` pass
+   * the live rendered width so wide compound parents do not overlap.
+   */
+  width?: number;
 }
 
 export interface LayoutEdge {
@@ -47,6 +64,27 @@ export interface ReachDepthOptions {
   layerGap?: number;
   /** Minimum horizontal gap between adjacent nodes on a layer. Defaults to 200. */
   minNodeGap?: number;
+  /**
+   * Maximum number of nodes placed on a single row within one layer. When a
+   * layer has more nodes than this, the row wraps onto additional sub-rows
+   * separated by `rowGap`. Defaults to 14 — large enough for a typical
+   * cross-package tier without forcing tiny canvases to wrap, small enough
+   * that the 60-package layers seen on Xray-core do not stretch out to a
+   * 15 000 px ribbon.
+   */
+  maxNodesPerRow?: number;
+  /**
+   * Vertical gap between sub-rows belonging to the same layer. Should be
+   * visibly tighter than `layerGap` so the user can tell layers apart from
+   * intra-layer wrap rows. Defaults to `layerGap * 0.4` (auto-derived).
+   */
+  rowGap?: number;
+  /**
+   * Visual padding added to half-width sums when computing per-pair gaps
+   * from `LayoutNode.width`. Defaults to 30 px. Only used when at least
+   * one of the adjacent nodes has a defined `width`.
+   */
+  nodeBuffer?: number;
   /** Compact dead-region offset from the reachable bounding box. */
   deadRegion?: { dx: number; dy: number };
 }
@@ -75,17 +113,30 @@ export function computeReachDepthPositions(
   const topPadding = opts.topPadding ?? 80;
   const layerGap = opts.layerGap ?? 180;
   const minNodeGap = opts.minNodeGap ?? 200;
+  const maxNodesPerRow = Math.max(2, opts.maxNodesPerRow ?? 14);
+  // `rowGap` defaults to a fraction of `layerGap` so the visual rule
+  // "rows inside a layer tight, gap between layers visibly larger" holds
+  // automatically as callers tune `layerGap`. The 0.4 factor keeps a
+  // 200 px `layerGap` at a 80 px intra-layer row gap — the demo contract
+  // calls for ≥ 2.5x ratio between layers and within-layer rows.
+  const rowGap = opts.rowGap ?? layerGap * 0.4;
+  const nodeBuffer = opts.nodeBuffer ?? 30;
   const deadDx = opts.deadRegion?.dx ?? 120;
   const deadDy = opts.deadRegion?.dy ?? 120;
 
   // Validate ids and dedupe — multiple incoming nodes with the same id are
-  // treated as one for layout purposes.
+  // treated as one for layout purposes. Index widths by id for the
+  // per-pair gap computation later on.
   const seen = new Set<string>();
   const uniqueNodes: LayoutNode[] = [];
+  const widthById = new Map<string, number>();
   for (const n of nodes) {
     if (seen.has(n.id)) continue;
     seen.add(n.id);
     uniqueNodes.push(n);
+    if (typeof n.width === 'number' && Number.isFinite(n.width) && n.width > 0) {
+      widthById.set(n.id, n.width);
+    }
   }
 
   // Effective entry set = `entryIds` ∩ `uniqueNodes`, plus any node marked
@@ -190,6 +241,25 @@ export function computeReachDepthPositions(
   const layerXById = new Map<string, number>();
   const depths = Array.from(byDepth.keys()).sort((a, b) => a - b);
 
+  // Compute per-pair minimum gap for two ids on the same row. Centre-to-
+  // centre distance must be at least `(widthA + widthB)/2 + buffer` when
+  // both widths are known, otherwise `minNodeGap` is the floor.
+  const pairGap = (a: string, b: string): number => {
+    const wa = widthById.get(a);
+    const wb = widthById.get(b);
+    if (wa === undefined && wb === undefined) {
+      return minNodeGap;
+    }
+    const half = (wa ?? 0) / 2 + (wb ?? 0) / 2;
+    return Math.max(minNodeGap, half + nodeBuffer);
+  };
+
+  // y-cursor advances per *visual row* — entries are layer 0, wrapped sub-
+  // rows still count as part of the same logical depth but consume a row's
+  // worth of vertical space. Tracking it on a running cursor keeps inter-
+  // layer gaps independent of how many sub-rows the previous layer used.
+  let yCursor = topPadding;
+
   for (const d of depths) {
     const layer = byDepth.get(d) ?? [];
     if (d === 0) {
@@ -232,18 +302,60 @@ export function computeReachDepthPositions(
       });
     }
 
+    // Split the layer into rows. Each row holds at most `maxNodesPerRow`
+    // entries; rows preserve the layer's sort order so the barycenter
+    // heuristic still flows left-to-right.
+    const layerSize = layer.length;
+    const rowCount = Math.max(1, Math.ceil(layerSize / maxNodesPerRow));
+    const baseRowSize = Math.ceil(layerSize / rowCount);
+
     // Assign x-positions across the canvas width.
     const usable = canvasWidth - 2 * topPadding;
-    const layerSize = layer.length;
-    const gap = layerSize <= 1 ? 0 : Math.max(usable / (layerSize - 1), minNodeGap);
-    const totalWidth = gap * (layerSize - 1);
-    const x0 = topPadding + (usable - totalWidth) / 2;
-    const y = topPadding + d * layerGap;
-    layer.forEach((id, idx) => {
-      const x = x0 + idx * gap;
-      out.set(id, { x, y });
-      layerXById.set(id, x);
-    });
+
+    for (let row = 0; row < rowCount; row += 1) {
+      const start = row * baseRowSize;
+      const end = Math.min(layerSize, start + baseRowSize);
+      const rowIds = layer.slice(start, end);
+      if (rowIds.length === 0) continue;
+
+      // Pairwise required gaps (width-aware) drive total row width. Build a
+      // running offset array so determinism is preserved (same row → same
+      // offsets) and per-pair widths feed directly into placement.
+      const offsets: number[] = [0];
+      for (let i = 1; i < rowIds.length; i += 1) {
+        const prev = rowIds[i - 1] as string;
+        const cur = rowIds[i] as string;
+        offsets.push((offsets[i - 1] as number) + pairGap(prev, cur));
+      }
+      const totalWidth = offsets[offsets.length - 1] ?? 0;
+
+      // Centre the row inside the usable canvas band, but never let
+      // half-widths poke past the padded edges.
+      const rowMid = topPadding + usable / 2;
+      const firstHalf = (widthById.get(rowIds[0] as string) ?? 0) / 2;
+      const lastHalf = (widthById.get(rowIds[rowIds.length - 1] as string) ?? 0) / 2;
+      const leftEdge = topPadding + firstHalf;
+      const rightEdge = topPadding + usable - lastHalf;
+      let x0 = rowMid - totalWidth / 2;
+      if (x0 < leftEdge) x0 = leftEdge;
+      if (x0 + totalWidth > rightEdge) {
+        // Overflow: shrink-fit by re-centering against the usable band; we
+        // still keep determinism, and downstream zoom-cap fit handles the
+        // residual overflow visually.
+        x0 = Math.max(leftEdge, rightEdge - totalWidth);
+      }
+
+      const y = yCursor + row * rowGap;
+      rowIds.forEach((id, idx) => {
+        const x = x0 + (offsets[idx] as number);
+        out.set(id, { x, y });
+        layerXById.set(id, x);
+      });
+    }
+
+    // Advance the y-cursor by (rowCount-1) intra-layer row gaps plus one
+    // full inter-layer gap so the next layer is *visibly* separated.
+    yCursor += (rowCount - 1) * rowGap + layerGap;
   }
 
   // Compact dead region for unreachable nodes — lower-right of the reachable
