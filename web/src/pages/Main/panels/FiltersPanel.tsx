@@ -19,6 +19,7 @@
  * this component makes it trivial to mount in tests.
  */
 
+import type { Core } from 'cytoscape';
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 
 import { ALL_NODE_KINDS, type Graph, type NodeKind } from '../../../api/types';
@@ -58,45 +59,95 @@ export interface FiltersPanelProps {
   value: FilterSpec;
   /** Notify the parent of any user-initiated change. */
   onChange: (next: FilterSpec) => void;
+  /**
+   * Live Cytoscape core. When provided, kind counts and the package list are
+   * derived from `cy.nodes()` and refreshed on `add` / `remove` events so the
+   * panel reflects the actual on-canvas elements (R4-2). After a package
+   * expansion the React `graph` prop still references the aggregated snapshot
+   * — only the cy core knows the freshly inserted member nodes.
+   */
+  cy?: Core | null;
 }
 
 /**
- * Returns the deduplicated, alphabetically sorted package list extracted from
- * the graph's nodes. Stable order keeps the `<details>` body diff-friendly
- * for React reconciliation.
+ * Snapshot of the on-canvas (or fallback graph-prop) population that the
+ * panel uses to derive its kind counts, package list, and external split.
  */
-function derivePackages(graph: Graph | null): string[] {
-  if (graph === null) {
-    return [];
-  }
-  const set = new Set<string>();
-  for (const n of graph.nodes) {
-    if (n.package !== '') {
-      set.add(n.package);
-    }
-  }
-  return Array.from(set).sort((a, b) => a.localeCompare(b));
+interface CanvasSnapshot {
+  kindCounts: Record<NodeKind, number>;
+  packages: string[];
+  externalPackages: Set<string>;
+  externalCount: number;
 }
 
-/**
- * Returns the count of nodes per kind so the panel can disable kinds that the
- * current graph does not contain (FiltersPanel UX requirement: "Empty: if in
- * graph there is no kind X — checkbox disabled").
- */
-function countPerKind(graph: Graph | null): Record<NodeKind, number> {
+/** Empty snapshot used when neither `cy` nor `graph` is available. */
+function emptySnapshot(): CanvasSnapshot {
   const counts = {} as Record<NodeKind, number>;
   for (const k of ALL_NODE_KINDS) {
     counts[k] = 0;
   }
+  return {
+    kindCounts: counts,
+    packages: [],
+    externalPackages: new Set<string>(),
+    externalCount: 0,
+  };
+}
+
+/**
+ * Snapshot derived from the live Cytoscape core. Walks `cy.nodes()` once,
+ * collects per-kind counts, the deduplicated package list, and the set of
+ * packages whose representative node carries `external: true`. We classify
+ * a package as external if any of its on-canvas nodes is external — the
+ * backend always tags every node from a stdlib/third-party package, so a
+ * single positive vote is sufficient and saves a follow-up ratio check.
+ */
+function snapshotFromCy(cy: Core): CanvasSnapshot {
+  const snap = emptySnapshot();
+  const pkgSet = new Set<string>();
+  cy.nodes().forEach((n) => {
+    const kind = String(n.data('kind') ?? '') as NodeKind;
+    if (snap.kindCounts[kind] !== undefined) {
+      snap.kindCounts[kind] += 1;
+    }
+    const pkg = String(n.data('package') ?? '');
+    if (pkg !== '') {
+      pkgSet.add(pkg);
+      if (n.data('external') === true) {
+        snap.externalPackages.add(pkg);
+      }
+    }
+    if (n.data('external') === true) {
+      snap.externalCount += 1;
+    }
+  });
+  snap.packages = Array.from(pkgSet).sort((a, b) => a.localeCompare(b));
+  return snap;
+}
+
+/** Snapshot derived from the React graph snapshot (fallback before cy mounts). */
+function snapshotFromGraph(graph: Graph | null): CanvasSnapshot {
+  const snap = emptySnapshot();
   if (graph === null) {
-    return counts;
+    return snap;
   }
+  const pkgSet = new Set<string>();
   for (const n of graph.nodes) {
-    if (counts[n.kind] !== undefined) {
-      counts[n.kind] += 1;
+    if (snap.kindCounts[n.kind] !== undefined) {
+      snap.kindCounts[n.kind] += 1;
+    }
+    if (n.package !== '') {
+      pkgSet.add(n.package);
+      if (n.external === true) {
+        snap.externalPackages.add(n.package);
+      }
+    }
+    if (n.external === true) {
+      snap.externalCount += 1;
     }
   }
-  return counts;
+  snap.packages = Array.from(pkgSet).sort((a, b) => a.localeCompare(b));
+  return snap;
 }
 
 /**
@@ -104,9 +155,69 @@ function countPerKind(graph: Graph | null): Record<NodeKind, number> {
  * `find` input and the package-search filter; persistent filter state lives in
  * `value` and is updated through `onChange`.
  */
-export function FiltersPanel({ graph, value, onChange }: FiltersPanelProps): JSX.Element {
-  const packages = useMemo(() => derivePackages(graph), [graph]);
-  const kindCounts = useMemo(() => countPerKind(graph), [graph]);
+export function FiltersPanel({
+  graph,
+  value,
+  onChange,
+  cy = null,
+}: FiltersPanelProps): JSX.Element {
+  // Bumped on every cy `add` / `remove` so the snapshot memo recomputes.
+  // We don't read this counter directly — its mere presence in the dep array
+  // is what forces `useMemo` to re-run.
+  const [cyTopologyTick, setCyTopologyTick] = useState<number>(0);
+
+  useEffect(() => {
+    if (cy === null) {
+      return undefined;
+    }
+    const bump = (): void => {
+      setCyTopologyTick((n) => n + 1);
+    };
+    cy.on('add', 'node', bump);
+    cy.on('remove', 'node', bump);
+    cy.on('data', 'node', bump);
+    // Initial sync — the cy core may already hold the graph by the time the
+    // panel mounts (route change inside an SPA, hot reload, etc.).
+    bump();
+    return () => {
+      cy.off('add', 'node', bump);
+      cy.off('remove', 'node', bump);
+      cy.off('data', 'node', bump);
+    };
+  }, [cy]);
+
+  // Prefer the live cy snapshot (R4-2). Falls back to the React graph prop
+  // only when the cy core is not yet mounted — for an instant after the
+  // first analyse the panel still has data to render.
+  // cyTopologyTick is part of the dep array on purpose — see effect above:
+  // it is the signal that cy.nodes() may have changed even though the cy
+  // reference itself is stable. Eslint can't tell so we silence the rule.
+  const snapshot = useMemo<CanvasSnapshot>(
+    () => {
+      if (cy !== null) {
+        return snapshotFromCy(cy);
+      }
+      return snapshotFromGraph(graph);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cy, graph, cyTopologyTick],
+  );
+
+  const packages = snapshot.packages;
+  const kindCounts = snapshot.kindCounts;
+
+  // R4-7: split packages into the user's own module vs external (stdlib,
+  // third-party). The split is purely visual; both lists feed the same
+  // FilterSpec.packages so the existing "subset" logic doesn't change.
+  const localPackages = useMemo(
+    () => packages.filter((p) => !snapshot.externalPackages.has(p)),
+    [packages, snapshot.externalPackages],
+  );
+  const externalPackages = useMemo(
+    () => packages.filter((p) => snapshot.externalPackages.has(p)),
+    [packages, snapshot.externalPackages],
+  );
+
   const [findDraft, setFindDraft] = useState<string>(value.find);
   const [packageQuery, setPackageQuery] = useState<string>('');
   const findInputRef = useRef<HTMLInputElement | null>(null);
@@ -211,6 +322,18 @@ export function FiltersPanel({ graph, value, onChange }: FiltersPanelProps): JSX
     onChange(defaultFilterSpec());
   }, [onChange]);
 
+  const handleHideExternalToggle = useCallback(
+    (on: boolean) => {
+      if (value.hideExternal === on) {
+        return;
+      }
+      onChange({ ...value, hideExternal: on });
+    },
+    [value, onChange],
+  );
+
+  const externalCount = snapshot.externalCount;
+
   const handleFindChange = useCallback(
     (evt: React.ChangeEvent<HTMLInputElement>) => {
       setFindDraft(evt.target.value);
@@ -232,13 +355,47 @@ export function FiltersPanel({ graph, value, onChange }: FiltersPanelProps): JSX
     [value, onChange],
   );
 
-  const filteredPackages = useMemo(() => {
+  const filteredLocalPackages = useMemo(() => {
     if (packageQuery === '') {
-      return packages;
+      return localPackages;
     }
     const needle = packageQuery.toLowerCase();
-    return packages.filter((p) => p.toLowerCase().includes(needle));
-  }, [packages, packageQuery]);
+    return localPackages.filter((p) => p.toLowerCase().includes(needle));
+  }, [localPackages, packageQuery]);
+
+  const filteredExternalPackages = useMemo(() => {
+    if (packageQuery === '') {
+      return externalPackages;
+    }
+    const needle = packageQuery.toLowerCase();
+    return externalPackages.filter((p) => p.toLowerCase().includes(needle));
+  }, [externalPackages, packageQuery]);
+
+  const renderPackageRow = useCallback(
+    (pkg: string): JSX.Element => {
+      const isOn =
+        value.packages.mode === 'all' || value.packages.selected.includes(pkg);
+      return (
+        <li key={pkg}>
+          <label className="filters-panel__row">
+            <input
+              type="checkbox"
+              checked={isOn}
+              onChange={(evt) => {
+                handlePackageToggle(pkg, evt.target.checked);
+              }}
+              aria-label={`Toggle package ${pkg}`}
+              data-testid={`filters-package-${pkg}`}
+            />
+            <span className="filters-panel__row-label filters-panel__row-label--mono">
+              {pkg}
+            </span>
+          </label>
+        </li>
+      );
+    },
+    [value.packages, handlePackageToggle],
+  );
 
   return (
     <section className="filters-panel" aria-label="Filters" data-testid="filters-panel">
@@ -253,6 +410,30 @@ export function FiltersPanel({ graph, value, onChange }: FiltersPanelProps): JSX
           reset
         </button>
       </header>
+
+      <div className="filters-panel__group" data-testid="filters-external-group">
+        <label
+          className={`filters-panel__row${externalCount === 0 ? ' filters-panel__row--disabled' : ''}`}
+          data-testid="filters-hide-external"
+        >
+          <input
+            type="checkbox"
+            checked={value.hideExternal}
+            disabled={externalCount === 0}
+            onChange={(evt) => {
+              handleHideExternalToggle(evt.target.checked);
+            }}
+            aria-label="Hide external packages"
+          />
+          <span className="filters-panel__row-label">Hide external packages</span>
+          <span className="filters-panel__row-count" data-testid="filters-external-count">
+            {externalCount}
+          </span>
+        </label>
+        <p className="filters-panel__hint">
+          Stdlib and third-party deps loaded transitively.
+        </p>
+      </div>
 
       <fieldset className="filters-panel__group" data-testid="filters-kinds">
         <legend className="filters-panel__legend">Show kinds</legend>
@@ -323,33 +504,41 @@ export function FiltersPanel({ graph, value, onChange }: FiltersPanelProps): JSX
             >
               show all
             </button>
-            <ul className="filters-panel__pkg-list" data-testid="filters-package-list">
-              {filteredPackages.map((pkg) => {
-                const isOn =
-                  value.packages.mode === 'all' || value.packages.selected.includes(pkg);
-                return (
-                  <li key={pkg}>
-                    <label className="filters-panel__row">
-                      <input
-                        type="checkbox"
-                        checked={isOn}
-                        onChange={(evt) => {
-                          handlePackageToggle(pkg, evt.target.checked);
-                        }}
-                        aria-label={`Toggle package ${pkg}`}
-                        data-testid={`filters-package-${pkg}`}
-                      />
-                      <span className="filters-panel__row-label filters-panel__row-label--mono">
-                        {pkg}
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-              {filteredPackages.length === 0 ? (
+            <ul
+              className="filters-panel__pkg-list"
+              data-testid="filters-package-list"
+            >
+              {filteredLocalPackages.map((pkg) => renderPackageRow(pkg))}
+              {filteredLocalPackages.length === 0
+              && filteredExternalPackages.length === 0 ? (
                 <li className="filters-panel__hint">No packages match.</li>
               ) : null}
             </ul>
+            {externalPackages.length > 0 ? (
+              <details
+                className="filters-panel__group filters-panel__group--nested"
+                data-testid="filters-packages-external"
+              >
+                <summary className="filters-panel__legend">
+                  External
+                  <span className="filters-panel__row-count">
+                    {String(externalPackages.length)}
+                  </span>
+                </summary>
+                <p className="filters-panel__hint">
+                  Stdlib and third-party deps loaded transitively.
+                </p>
+                <ul
+                  className="filters-panel__pkg-list"
+                  data-testid="filters-package-list-external"
+                >
+                  {filteredExternalPackages.map((pkg) => renderPackageRow(pkg))}
+                  {filteredExternalPackages.length === 0 ? (
+                    <li className="filters-panel__hint">No external packages match.</li>
+                  ) : null}
+                </ul>
+              </details>
+            ) : null}
           </>
         )}
       </details>

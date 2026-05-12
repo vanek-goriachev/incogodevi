@@ -22,7 +22,7 @@
  * Cytoscape model after `GraphCanvas` mounts.
  */
 
-import type { Core, EdgeSingular, NodeSingular, StylesheetStyle } from 'cytoscape';
+import type { Core, EdgeSingular, NodeSingular } from 'cytoscape';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { projectKey } from '../../storage/keys';
@@ -40,23 +40,6 @@ const TRAVERSED_EDGE_KINDS: ReadonlySet<string> = new Set([
   'embeds',
   'references',
 ]);
-
-/** Stylesheet rules attached on first hook activation per Cytoscape instance. */
-const COLLAPSE_STYLE_RULES: StylesheetStyle[] = [
-  {
-    selector: `.${COLLAPSED_HIDDEN_CLASS}`,
-    style: {
-      display: 'none',
-    },
-  },
-  {
-    selector: `node.${COLLAPSED_ROOT_CLASS}`,
-    style: {
-      'border-style': 'dotted',
-      'border-width': 3,
-    },
-  },
-];
 
 export interface UseCollapseApi {
   /** Set of currently collapsed root ids. */
@@ -137,7 +120,6 @@ export function useCollapse(
       lastAppliedRef.current = null;
       return;
     }
-    ensureCollapseStyleRules(cy);
     applyCollapsedSet(cy, collapsedIds);
     lastAppliedRef.current = new Set(collapsedIds);
   }, [cy, collapsedIds]);
@@ -219,44 +201,12 @@ export function useCollapse(
 }
 
 /**
- * Add the collapse stylesheet rules to a Cytoscape instance.
- *
- * Mirrors the pattern from `useFilters.ensureFilterStyleRules` — the live
- * stylesheet is rebuilt on theme switches, so this routine is idempotent
- * and safe to call from every effect.
- */
-export function ensureCollapseStyleRules(cy: Core): void {
-  let styleApi: unknown;
-  try {
-    styleApi = cy.style();
-  } catch {
-    return;
-  }
-  if (styleApi === null || styleApi === undefined) {
-    return;
-  }
-  const styleSelector = (styleApi as {
-    selector?: (s: string) => {
-      style: (props: Record<string, unknown>) => { update: () => void };
-    };
-  }).selector;
-  if (typeof styleSelector !== 'function') {
-    return;
-  }
-  for (const rule of COLLAPSE_STYLE_RULES) {
-    const props = rule.style as unknown as Record<string, unknown>;
-    try {
-      styleSelector(rule.selector).style(props).update();
-    } catch {
-      return;
-    }
-  }
-}
-
-/**
  * Recompute and apply the hidden / root classes for the supplied collapsed
  * set. Wipes previous state first so removing a root from the set always
- * un-hides the affected descendants.
+ * un-hides the affected descendants. The CSS rules that translate the
+ * classes into `display: none` live in `graph-styles.buildStylesheet` —
+ * Cytoscape only honours the display property when the rule is part of the
+ * base stylesheet handed to `cytoscape({...})`.
  */
 export function applyCollapsedSet(cy: Core, collapsed: ReadonlySet<string>): void {
   cy.batch(() => {

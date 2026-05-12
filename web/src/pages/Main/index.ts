@@ -33,7 +33,6 @@ export { applyFilters, ensureFilterStyleRules, useFilters } from './useFilters';
 export {
   useCollapse,
   applyCollapsedSet,
-  ensureCollapseStyleRules,
   COLLAPSED_HIDDEN_CLASS,
   COLLAPSED_ROOT_CLASS,
 } from './useCollapse';

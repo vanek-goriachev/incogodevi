@@ -213,6 +213,64 @@ export function buildStylesheet(theme: ThemeTokens): StylesheetStyle[] {
     },
   });
 
+  // ---- partial-dead package badge (R4-5) ----
+  // Backend tags an aggregated package with `partial_dead: true` when at
+  // least one but not all of its children are unreachable. Render with an
+  // amber dashed border so the user can tell at a glance that the package
+  // contains dead code without itself being fully dead. The rule is keyed
+  // off the data attribute, not a class, so it survives applyExpansion's
+  // class manipulations.
+  sheet.push({
+    selector: 'node[kind="package"][?partial_dead]',
+    style: {
+      'border-color': '#b45309',
+      'border-style': 'dashed',
+      'border-width': 3,
+    },
+  });
+
+  // ---- fully-dead package badge (R4-5) ----
+  // `fully_dead: true` means every child is unreachable. Render with the
+  // standard dead overlay (amber background, faded) plus a heavier dashed
+  // border so it stands out from the partial-dead variant.
+  sheet.push({
+    selector: 'node[kind="package"][?fully_dead]',
+    style: {
+      'background-color': '#fef3c7',
+      'border-color': '#b45309',
+      'border-style': 'dashed',
+      'border-width': 3.5,
+      opacity: 0.7,
+    },
+  });
+
+  // ---- expanded package compound parent (R4-4) ----
+  // After `applyExpansion` promotes the aggregated package node into a
+  // Cytoscape compound parent (children carry `parent: <pkgNodeId>` data),
+  // it tags the parent with `pkg-compound`. Strip the badge fill and use a
+  // dashed accent border so the parent reads as a container box rather than
+  // a node in its own right. The label moves to the top so it does not
+  // overlap with the children. `:parent` selector is applied so the rule
+  // also matches when the children land via the imperative `cy.add()` call.
+  // Padding is intentionally small — the compound's "box" should hug its
+  // members. Pre-R5 we used 24 px which left a wide halo that the user read
+  // as wasted space (R5 Bug #1).
+  sheet.push({
+    selector: 'node.pkg-compound, node[kind="package"]:parent',
+    style: {
+      'background-color': theme.bgElevated,
+      'background-opacity': 0.45,
+      'border-color': theme.accent,
+      'border-style': 'dashed',
+      'border-width': 2,
+      'text-valign': 'top',
+      'text-halign': 'center',
+      'font-weight': 700,
+      padding: '14px',
+      'z-index': 0,
+    },
+  });
+
   // ---- selection ring ----
   sheet.push({
     selector: 'node:selected',
@@ -285,6 +343,75 @@ export function buildStylesheet(theme: ThemeTokens): StylesheetStyle[] {
     selector: '.mode-hide-dead',
     style: {
       display: 'none',
+    },
+  });
+
+  // ---- filter-driven hide class (left-rail FiltersPanel + useFilters) ----
+  // Cytoscape only honours `display: none` reliably when the rule is part of
+  // the base stylesheet handed to `cytoscape({...})`. Adding it incrementally
+  // via `cy.style().selector('.hidden').style({display:'none'}).update()` is
+  // ignored by the renderer in 3.x for already-rendered elements, so the
+  // FiltersPanel toggles appeared to do nothing. Scoping the selector to
+  // `node` and `edge` separately matches Cytoscape's selector grammar; bare
+  // `.hidden` only matches nodes.
+  sheet.push({
+    selector: 'node.hidden',
+    style: {
+      display: 'none',
+    },
+  });
+  sheet.push({
+    selector: 'edge.hidden',
+    style: {
+      display: 'none',
+    },
+  });
+
+  // ---- internal contains-edge hide class (R5 Bug #1 + #2) ----
+  // After a package is promoted into a Cytoscape compound parent, the visual
+  // "this node lives inside that package" affordance is the dashed compound
+  // border. The package -> member contains edges that the backend returns in
+  // the level=struct payload become redundant — and worse, fcose treats them
+  // as attractive springs that pull every member toward the centroid AND
+  // repel each other, blowing the compound's bounding box up to viewport
+  // size. `applyExpansion` tags any contains edge whose source is the
+  // soon-to-be compound parent (and whose target lands inside it) with this
+  // class so they vanish. Like the other `display: none` rules above, this
+  // MUST live in the base stylesheet — Cytoscape silently drops `display:
+  // none` rules added via `cy.style().selector(...).update()` for already-
+  // rendered elements (see prior round notes).
+  sheet.push({
+    selector: 'edge.contains-internal',
+    style: {
+      display: 'none',
+    },
+  });
+
+  // ---- collapse-driven hide class (right-click "Hide subtree" + useCollapse) ----
+  // Same constraint as `.hidden` above: Cytoscape only honours `display: none`
+  // when the rule is part of the base stylesheet handed to `cytoscape({...})`.
+  // Adding it incrementally via `cy.style().selector('.collapsed-hidden')...`
+  // is silently ignored for already-rendered elements, so the menu item
+  // appeared to do nothing.
+  sheet.push({
+    selector: 'node.collapsed-hidden',
+    style: {
+      display: 'none',
+    },
+  });
+  sheet.push({
+    selector: 'edge.collapsed-hidden',
+    style: {
+      display: 'none',
+    },
+  });
+
+  // ---- collapsed-root border (cosmetic, safe to attach incrementally too) ----
+  sheet.push({
+    selector: 'node.collapsed-root',
+    style: {
+      'border-style': 'dotted',
+      'border-width': 3,
     },
   });
 

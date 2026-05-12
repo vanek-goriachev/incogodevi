@@ -126,7 +126,13 @@ export function applyDeadMode(cy: Core, mode: DeadMode): void {
     all.removeClass(HIDE_DEAD_CLASS);
 
     if (mode === 'live-only') {
-      const dead = cy.nodes('.dead');
+      // R4-5: partial-dead packages still own at least one live child, so
+      // they must stay visible in live-only mode even though their own
+      // `reachable` flag may be false. We detect this purely from the
+      // node's data so the rule survives a stylesheet rebuild.
+      const dead = cy
+        .nodes('.dead')
+        .filter((n) => n.data('partial_dead') !== true);
       dead.addClass(HIDE_DEAD_CLASS);
       // Edges incident to a dead endpoint must hide too — otherwise dangling
       // arrows linger over empty space.
@@ -135,7 +141,13 @@ export function applyDeadMode(cy: Core, mode: DeadMode): void {
     }
 
     if (mode === 'dead-only') {
-      const live = cy.nodes().difference(cy.nodes('.dead'));
+      // Symmetric: partial-dead packages also have dead children, so they
+      // belong in the dead-only view. Treat them as dead for the hiding
+      // pass even though the reachability flag is true.
+      const live = cy
+        .nodes()
+        .difference(cy.nodes('.dead'))
+        .filter((n) => n.data('partial_dead') !== true);
       live.addClass(HIDE_LIVE_CLASS);
       // Hide every edge that touches at least one live node — the dead-only
       // view shows the orphan dead subgraph.

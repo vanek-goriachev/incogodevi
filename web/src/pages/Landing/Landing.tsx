@@ -148,10 +148,13 @@ export function Landing({ apiClient }: LandingProps): JSX.Element {
     evt.preventDefault();
   }, []);
 
-  const onZoneClick = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
-
+  // R4-8: The Finder picker used to open twice on a single click because the
+  // wrapping `<label>` already forwards clicks to its associated `<input
+  // type="file">` natively, and we ALSO had `onClick={onZoneClick}` calling
+  // `fileInputRef.current.click()` — double-firing the picker. The native
+  // label-to-input association is enough; we only keep the keyboard handler
+  // because pressing Enter/Space on a `<label role="button">` does not bubble
+  // through to the input on its own.
   const onZoneKeyDown = useCallback((evt: React.KeyboardEvent<HTMLLabelElement>) => {
     if (evt.key === 'Enter' || evt.key === ' ') {
       evt.preventDefault();
@@ -245,7 +248,6 @@ export function Landing({ apiClient }: LandingProps): JSX.Element {
           data-state={upload.status}
           onDrop={onZoneDrop}
           onDragOver={onZoneDragOver}
-          onClick={onZoneClick}
           onKeyDown={onZoneKeyDown}
           tabIndex={0}
           role="button"
