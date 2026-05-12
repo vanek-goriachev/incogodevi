@@ -29,9 +29,20 @@ import {
   type JSX,
 } from 'react';
 
-import { ALL_NODE_KINDS, type EntryPointSpec, type Graph, type Node } from '../../../api/types';
+import { ALL_NODE_KINDS, type EntryPointSpec, type Graph, type SymbolEntry } from '../../../api/types';
+import type { ApiClient } from '../../../api/client';
 import { isValidFqn, nodeToFqn } from './fqn';
+import { DEFAULT_PICKER_LIMIT, rankSymbols } from './symbolRanker';
 import './EntryPointsPanel.css';
+
+/**
+ * Minimal contract the picker needs from the API client. Mirrors the
+ * `listSymbols` signature in `api/client.ts` but is kept narrow so tests can
+ * pass a hand-rolled fake without instantiating the full `ApiClient`.
+ */
+export interface EntrySymbolSource {
+  listSymbols(projectId: string): Promise<SymbolEntry[]>;
+}
 
 export interface EntryPointsPanelProps {
   /** Latest graph snapshot — used to populate the picker. */
@@ -60,6 +71,16 @@ export interface EntryPointsPanelProps {
    * can serialize them.
    */
   busy?: boolean;
+  /**
+   * Source of the flat-symbol catalogue used by the picker combobox.
+   * `MainView` wires the real `ApiClient`; tests inject a fake. When
+   * undefined the picker falls back to the graph-derived candidate set
+   * (legacy behaviour) — that path is exercised by existing fixtures whose
+   * graph already contains every func/method node.
+   */
+  apiClient?: ApiClient | EntrySymbolSource;
+  /** Project id used when fetching the symbol catalogue. */
+  projectId?: string;
 }
 
 /** Spec defaults — mirror `storage/analysisSpec.ts`. */
@@ -137,6 +158,8 @@ export function EntryPointsPanel({
   lastError = null,
   onDuplicate,
   busy = false,
+  apiClient,
+  projectId,
 }: EntryPointsPanelProps): JSX.Element {
   const [dialogOpen, setDialogOpen] = useState(false);
   const auto = isAutoOn(value);
@@ -261,6 +284,8 @@ export function EntryPointsPanel({
           onSubmit={handleAddDialogSubmit}
           onCancel={closeDialog}
           serverError={lastError}
+          apiClient={apiClient}
+          projectId={projectId}
         />
       ) : null}
     </section>
@@ -278,10 +303,69 @@ interface AddEntryDialogProps {
   onSubmit: (fqn: string) => void;
   onCancel: () => void;
   serverError: { code: string; message: string } | null;
+  apiClient: ApiClient | EntrySymbolSource | undefined;
+  projectId: string | undefined;
 }
 
-/** Tabs inside the dialog: pick from the graph or paste a raw FQN. */
+/** Tabs inside the dialog: pick (combobox autocomplete) or paste a raw FQN. */
 type DialogMode = 'pick' | 'fqn';
+
+/**
+ * Last segment of a Go import path — used as a compact, recognisable label
+ * next to the picker entries so methods that share a name across packages
+ * are still distinguishable in the dropdown (e.g. `Server.Run · server`,
+ * `Worker.Run · worker`). Falls back to the full path when no slash exists.
+ */
+function shortPackageLabel(pkg: string): string {
+  if (pkg === '') {
+    return '';
+  }
+  const slash = pkg.lastIndexOf('/');
+  if (slash < 0 || slash === pkg.length - 1) {
+    return pkg;
+  }
+  return pkg.slice(slash + 1);
+}
+
+/**
+ * Build a fallback symbol list from a graph snapshot. Used in two cases:
+ *
+ *   1. No `apiClient` is wired (tests / Storybook stories).
+ *   2. The `listSymbols` request has not resolved yet.
+ *
+ * The fallback intentionally mirrors the canonical FQN form
+ * (`pkg#Name` / `pkg#Type.Method`) so a user typing during the network
+ * round-trip still sees usable candidates and the eventual selection
+ * matches the loader's accepted form.
+ */
+function graphToSymbols(graph: Graph | null): SymbolEntry[] {
+  if (graph === null) {
+    return [];
+  }
+  const out: SymbolEntry[] = [];
+  for (const node of graph.nodes) {
+    if (node.kind !== 'func' && node.kind !== 'method') {
+      continue;
+    }
+    if (node.package === '' || node.name === '') {
+      continue;
+    }
+    const fqn = nodeToFqn(node, graph);
+    if (fqn === null) {
+      continue;
+    }
+    const hashAt = fqn.indexOf('#');
+    const label = hashAt >= 0 ? fqn.slice(hashAt + 1) : node.name;
+    out.push({
+      id: node.id,
+      name: label,
+      fqn,
+      kind: node.kind,
+      package: node.package,
+    });
+  }
+  return out;
+}
 
 function AddEntryDialog({
   graph,
@@ -289,11 +373,17 @@ function AddEntryDialog({
   onSubmit,
   onCancel,
   serverError,
+  apiClient,
+  projectId,
 }: AddEntryDialogProps): JSX.Element {
   const [mode, setMode] = useState<DialogMode>('pick');
   const [query, setQuery] = useState<string>('');
   const [fqn, setFqn] = useState<string>('');
+  const [activeIndex, setActiveIndex] = useState<number>(0);
+  const [symbols, setSymbols] = useState<SymbolEntry[]>(() => graphToSymbols(graph));
+  const [symbolsLoaded, setSymbolsLoaded] = useState<boolean>(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const listboxRef = useRef<HTMLUListElement | null>(null);
   // Track where the current pointer gesture began so backdrop-click dismissal
   // ignores drags that started on the dialog content (e.g. text drag-select
   // inside the FQN input that releases on the padded backdrop area). Without
@@ -319,48 +409,66 @@ function AddEntryDialog({
     };
   }, [onCancel]);
 
-  const candidates = useMemo<Node[]>(() => {
-    if (graph === null) {
+  // Fetch the flat symbol catalogue on mount when the API client is wired.
+  // The list includes symbols inside currently-collapsed packages, so the
+  // user can pin entries without expanding anything first. Falls back to a
+  // graph-derived list when the request fails or no client was supplied.
+  useEffect(() => {
+    if (apiClient === undefined || projectId === undefined || projectId === '') {
+      // No symbol endpoint available — stay on the graph-derived fallback.
+      setSymbolsLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    apiClient
+      .listSymbols(projectId)
+      .then((rows) => {
+        if (cancelled) {
+          return;
+        }
+        if (rows.length > 0) {
+          setSymbols(rows);
+        }
+        setSymbolsLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        // Network failed — keep the graph-derived fallback so the picker
+        // remains usable for symbols already on the canvas.
+        setSymbolsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, projectId]);
+
+  const ranked = useMemo<SymbolEntry[]>(() => {
+    // Empty input shows the prompt hint instead of dumping the first N
+    // arbitrary entries: keyboard-only users avoid the surprise of an
+    // already-highlighted random row, and the dropdown stays compact until
+    // the user actually starts typing.
+    if (query.trim() === '') {
       return [];
     }
-    return graph.nodes.filter(
-      (n) =>
-        (n.kind === 'func' || n.kind === 'method') &&
-        n.package !== '' &&
-        n.name !== '',
-    );
-  }, [graph]);
+    return rankSymbols(symbols, query, DEFAULT_PICKER_LIMIT);
+  }, [symbols, query]);
 
-  const filtered = useMemo<Node[]>(() => {
-    const needle = query.trim().toLowerCase();
-    if (needle === '') {
-      return candidates.slice(0, 50);
-    }
-    const out: Node[] = [];
-    for (const node of candidates) {
-      if (out.length >= 50) {
-        break;
-      }
-      const haystack = `${node.package}.${node.name}`.toLowerCase();
-      if (haystack.includes(needle)) {
-        out.push(node);
-      }
-    }
-    return out;
-  }, [candidates, query]);
+  // Reset the keyboard highlight whenever the candidate set changes shape,
+  // so a freshly-narrowed dropdown does not point at a stale row.
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [ranked.length, query]);
 
   const fqnDraftValid = isValidFqn(fqn);
   const fqnIsDuplicate = fqnDraftValid && existing.includes(fqn);
 
-  const handlePickSubmit = useCallback(
-    (node: Node) => {
-      const candidate = nodeToFqn(node, graph);
-      if (candidate === null) {
-        return;
-      }
-      onSubmit(candidate);
+  const handlePickSymbol = useCallback(
+    (symbol: SymbolEntry) => {
+      onSubmit(symbol.fqn);
     },
-    [graph, onSubmit],
+    [onSubmit],
   );
 
   const handleFqnSubmit = useCallback(
@@ -373,6 +481,80 @@ function AddEntryDialog({
     },
     [fqn, fqnDraftValid, fqnIsDuplicate, onSubmit],
   );
+
+  const optionId = useCallback(
+    (index: number): string => `entry-dialog-option-${String(index)}`,
+    [],
+  );
+
+  const commitActive = useCallback((): boolean => {
+    if (ranked.length === 0) {
+      return false;
+    }
+    const target = ranked[Math.min(activeIndex, ranked.length - 1)];
+    if (target === undefined) {
+      return false;
+    }
+    if (existing.includes(target.fqn)) {
+      return false;
+    }
+    handlePickSymbol(target);
+    return true;
+  }, [ranked, activeIndex, existing, handlePickSymbol]);
+
+  const handleSearchKeyDown = useCallback(
+    (evt: React.KeyboardEvent<HTMLInputElement>) => {
+      if (ranked.length === 0) {
+        return;
+      }
+      switch (evt.key) {
+        case 'ArrowDown':
+          evt.preventDefault();
+          setActiveIndex((idx) => (idx + 1) % ranked.length);
+          return;
+        case 'ArrowUp':
+          evt.preventDefault();
+          setActiveIndex((idx) => (idx - 1 + ranked.length) % ranked.length);
+          return;
+        case 'Home':
+          evt.preventDefault();
+          setActiveIndex(0);
+          return;
+        case 'End':
+          evt.preventDefault();
+          setActiveIndex(ranked.length - 1);
+          return;
+        case 'Enter':
+          evt.preventDefault();
+          commitActive();
+          return;
+        case 'Tab':
+          // Tab commits the highlight then falls through to natural focus
+          // movement so the user lands on the next focusable control.
+          if (commitActive()) {
+            // commit closes the dialog via onSubmit; no need to preventDefault.
+          }
+          return;
+        default:
+          return;
+      }
+    },
+    [ranked, commitActive],
+  );
+
+  // Keep the highlighted option scrolled into view on keyboard navigation.
+  useEffect(() => {
+    const list = listboxRef.current;
+    if (list === null) {
+      return;
+    }
+    const el = list.querySelector<HTMLElement>(
+      `#${optionId(activeIndex).replace(/[#.]/g, '\\$&')}`,
+    );
+    if (el !== null && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest' });
+    }
+  }, [activeIndex, optionId]);
 
   return (
     <div
@@ -443,40 +625,92 @@ function AddEntryDialog({
           <div className="entry-dialog__body" data-testid="entry-dialog-pick-body">
             <input
               ref={inputRef}
-              type="search"
+              type="text"
               className="entry-dialog__search"
-              placeholder="Search functions / methods"
+              placeholder="Начните вводить имя функции или структуры…"
               value={query}
               onChange={(evt) => {
                 setQuery(evt.target.value);
               }}
-              aria-label="Search entry candidates"
+              onKeyDown={handleSearchKeyDown}
+              role="combobox"
+              aria-expanded={ranked.length > 0}
+              aria-controls="entry-dialog-listbox"
+              aria-autocomplete="list"
+              aria-activedescendant={
+                ranked.length > 0 ? optionId(activeIndex) : undefined
+              }
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="Поиск точки входа"
               data-testid="entry-dialog-search"
             />
-            <ul className="entry-dialog__list" data-testid="entry-dialog-list">
-              {filtered.length === 0 ? (
-                <li className="entry-dialog__hint">No matching nodes.</li>
+            <ul
+              id="entry-dialog-listbox"
+              ref={listboxRef}
+              className="entry-dialog__list"
+              role="listbox"
+              aria-label="Кандидаты точек входа"
+              data-testid="entry-dialog-list"
+            >
+              {ranked.length === 0 ? (
+                <li
+                  className="entry-dialog__hint"
+                  data-testid="entry-dialog-no-match"
+                  role="presentation"
+                >
+                  {query.trim() === ''
+                    ? 'Начните вводить имя функции или структуры…'
+                    : 'Ничего не найдено'}
+                </li>
               ) : (
-                filtered.map((node) => {
-                  const candidate = nodeToFqn(node, graph);
-                  if (candidate === null) {
-                    return null;
-                  }
-                  const isExisting = existing.includes(candidate);
+                ranked.map((symbol, idx) => {
+                  const isExisting = existing.includes(symbol.fqn);
+                  const isActive = idx === activeIndex;
+                  const pkgLabel = shortPackageLabel(symbol.package);
+                  const className = `entry-dialog__pick${
+                    isActive ? ' entry-dialog__pick--active' : ''
+                  }`;
                   return (
-                    <li key={node.id} className="entry-dialog__list-item">
+                    <li
+                      key={symbol.fqn}
+                      className="entry-dialog__list-item"
+                      role="presentation"
+                    >
                       <button
                         type="button"
-                        className="entry-dialog__pick"
-                        onClick={() => {
-                          handlePickSubmit(node);
+                        id={optionId(idx)}
+                        className={className}
+                        role="option"
+                        aria-selected={isActive}
+                        // Use onMouseDown rather than onClick so the click
+                        // commit happens before the input loses focus and
+                        // before the backdrop click-handler can run — this
+                        // is what keeps the surrounding popover open when
+                        // a dropdown item is clicked.
+                        onMouseDown={(evt) => {
+                          evt.preventDefault();
+                          if (isExisting) {
+                            return;
+                          }
+                          handlePickSymbol(symbol);
+                        }}
+                        onMouseEnter={() => {
+                          setActiveIndex(idx);
                         }}
                         disabled={isExisting}
-                        data-testid={`entry-dialog-pick-${candidate}`}
-                        title={candidate}
+                        data-testid={`entry-dialog-pick-${symbol.fqn}`}
+                        title={symbol.fqn}
                       >
-                        <span className="entry-dialog__pick-name">{node.name}</span>
-                        <span className="entry-dialog__pick-pkg">{node.package}</span>
+                        <span className="entry-dialog__pick-name">
+                          {symbol.name}
+                          {pkgLabel !== '' ? (
+                            <span style={{ color: 'var(--color-fg-muted)' }}>
+                              {' · '}{pkgLabel}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="entry-dialog__pick-pkg">{symbol.package}</span>
                         {isExisting ? (
                           <span className="entry-dialog__pick-tag">added</span>
                         ) : null}
@@ -486,8 +720,8 @@ function AddEntryDialog({
                 })
               )}
             </ul>
-            {graph === null ? (
-              <p className="entry-dialog__hint">Graph not loaded yet.</p>
+            {!symbolsLoaded && symbols.length === 0 ? (
+              <p className="entry-dialog__hint">Загрузка символов…</p>
             ) : null}
           </div>
         ) : (

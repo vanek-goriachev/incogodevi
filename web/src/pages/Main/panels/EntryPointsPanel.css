@@ -274,6 +274,12 @@
   opacity: 0.55;
 }
 
+.entry-dialog__pick--active {
+  background-color: var(--color-bg-elevated);
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
 .entry-dialog__pick-name {
   font-family: var(--font-mono);
   font-size: 12px;

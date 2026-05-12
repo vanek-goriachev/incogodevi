@@ -225,3 +225,26 @@ export interface ApiErrorPayload {
 export interface ApiErrorEnvelope {
   error: ApiErrorPayload;
 }
+
+/**
+ * Flat symbol catalogue entry returned by `GET /api/projects/{id}/symbols`.
+ *
+ * Used to feed the entry-point picker combobox so the user never has to type
+ * a canonical FQN by hand. The `fqn` field is the exact string the server's
+ * loader accepts (`pkg#Name` or `pkg#Type.Method`); the `name` field is the
+ * human-friendly label (`Run`, `Server.Run`).
+ */
+export interface SymbolEntry {
+  id: string;
+  name: string;
+  fqn: string;
+  kind: NodeKind;
+  package: string;
+}
+
+export interface SymbolsResponse {
+  project_id: string;
+  generated_at: string;
+  count: number;
+  symbols: SymbolEntry[];
+}

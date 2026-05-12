@@ -53,6 +53,51 @@ describe('ApiClient', () => {
     });
   });
 
+  it('listSymbols returns the symbols array and caches per project id', async () => {
+    const payload = {
+      project_id: 'p1',
+      generated_at: '2026-05-12T00:00:00Z',
+      count: 1,
+      symbols: [
+        {
+          id: 'sym-1',
+          name: 'Run',
+          fqn: 'pkg#Server.Run',
+          kind: 'method',
+          package: 'pkg',
+        },
+      ],
+    };
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(jsonResponse(payload));
+    const client = new ApiClient({ baseUrl: '' });
+    const first = await client.listSymbols('p1');
+    expect(first).toHaveLength(1);
+    expect(first[0]?.fqn).toBe('pkg#Server.Run');
+
+    // Second call hits the cache, fetch must not be called again.
+    const second = await client.listSymbols('p1');
+    expect(second).toBe(first);
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it('listSymbols evicts the cache on failure so the next call retries', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error: { code: 'server_error', message: 'boom' } }),
+        { status: 500 },
+      ),
+    );
+    const client = new ApiClient({ baseUrl: '' });
+    await expect(client.listSymbols('p1')).rejects.toBeInstanceOf(ApiError);
+
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      jsonResponse({ project_id: 'p1', generated_at: 'now', count: 0, symbols: [] }),
+    );
+    const second = await client.listSymbols('p1');
+    expect(second).toHaveLength(0);
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(2);
+  });
+
   it('falls back to a synthetic code when body is empty', async () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       new Response('', { status: 500 }),
