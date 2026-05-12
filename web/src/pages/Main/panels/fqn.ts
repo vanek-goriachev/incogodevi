@@ -16,7 +16,7 @@
  *                          tap can populate the manual list directly.
  */
 
-import type { Node } from '../../../api/types';
+import type { Graph, Node } from '../../../api/types';
 
 /**
  * Strict FQN regular expression.
@@ -48,16 +48,51 @@ export function isValidFqn(value: string): boolean {
  * points (packages, fields, vars, consts) so the "Add as entry point"
  * affordance can hide itself instead of producing an invalid spec.
  *
- * Method names live inside `Node.name` already in the form `Receiver.Method`
- * (see `server/internal/graph` naming) — this routine therefore does not
- * synthesise the dotted form on its own.
+ * Methods need the receiver name to round-trip. The server emits
+ * `Node.name = methodName` (no receiver), so the receiver is recovered from
+ * the supplied graph via the `contains` edge that points at the method node:
+ * the source of that edge is the owning struct or interface. When no graph is
+ * provided or the parent cannot be resolved we fall back to `pkg#methodName`,
+ * which is acceptable for free functions but will be rejected by the server
+ * for methods — caller should always pass `graph` when handling method nodes.
  */
-export function nodeToFqn(node: Node): string | null {
+export function nodeToFqn(node: Node, graph?: Graph | null): string | null {
   if (node.kind !== 'func' && node.kind !== 'method') {
     return null;
   }
   if (node.package === '' || node.name === '') {
     return null;
   }
+  if (node.kind === 'method') {
+    const receiver = lookupReceiverName(node, graph);
+    if (receiver === null) {
+      return null;
+    }
+    return `${node.package}#${receiver}.${node.name}`;
+  }
   return `${node.package}#${node.name}`;
+}
+
+/**
+ * Walk the graph's `contains` edges to find the struct/interface that owns a
+ * method node and return its `Name`. Returns `null` when the parent cannot be
+ * located, signalling to the caller that the FQN cannot be constructed.
+ */
+function lookupReceiverName(node: Node, graph?: Graph | null): string | null {
+  if (graph === null || graph === undefined) {
+    return null;
+  }
+  for (const edge of graph.edges) {
+    if (edge.kind !== 'contains' || edge.target !== node.id) {
+      continue;
+    }
+    const parent = graph.nodes.find((n) => n.id === edge.source);
+    if (parent === undefined) {
+      continue;
+    }
+    if (parent.kind === 'struct' || parent.kind === 'interface') {
+      return parent.name;
+    }
+  }
+  return null;
 }

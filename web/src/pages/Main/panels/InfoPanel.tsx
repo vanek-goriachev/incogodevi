@@ -19,7 +19,7 @@
 
 import { useCallback, type JSX } from 'react';
 
-import type { Node } from '../../../api/types';
+import type { Graph, Node } from '../../../api/types';
 import { nodeToFqn } from './fqn';
 import './InfoPanel.css';
 
@@ -43,6 +43,13 @@ export interface InfoPanelProps {
   /** Currently selected node, or `null` for the empty state. */
   selectedNode: Node | null;
   /**
+   * Live graph snapshot, used by `nodeToFqn` to recover the receiver for
+   * method nodes (the server's `Node.name` is the bare method name). Optional
+   * so trivial render paths (non-method selections) keep working when the
+   * caller does not have a graph handy.
+   */
+  graph?: Graph | null;
+  /**
    * Invoked when the user clicks "Add as entry point". Receives the FQN
    * derived from the node. Parent decides whether to push it into the
    * entry-points list and trigger a re-analyze.
@@ -55,8 +62,8 @@ export interface InfoPanelProps {
   onCopy?: (text: string, success: boolean) => void;
 }
 
-export function InfoPanel({ selectedNode, onAddEntry, onCopy }: InfoPanelProps): JSX.Element {
-  const fqn = selectedNode !== null ? nodeToFqn(selectedNode) : null;
+export function InfoPanel({ selectedNode, graph, onAddEntry, onCopy }: InfoPanelProps): JSX.Element {
+  const fqn = selectedNode !== null ? nodeToFqn(selectedNode, graph) : null;
 
   const handleAddEntry = useCallback(() => {
     if (selectedNode === null || fqn === null || onAddEntry === undefined) {

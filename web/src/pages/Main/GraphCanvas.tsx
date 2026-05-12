@@ -105,6 +105,13 @@ export interface GraphCanvasProps {
    * the user to refetch the graph.
    */
   layoutTrigger?: number;
+  /**
+   * Optional callback fired when the number of pinned entry-point nodes
+   * exceeds {@link ENTRY_PIN_LIMIT}. Lets the parent surface a non-blocking
+   * toast instead of letting the entry-pin layer silently bail. Receives the
+   * actual entry count so the message can quote it.
+   */
+  onPinOverflow?: (entryCount: number, limit: number) => void;
 }
 
 /**
@@ -122,6 +129,7 @@ export function GraphCanvas({
   rendererOverride = null,
   onCyReady,
   layoutTrigger = 0,
+  onPinOverflow,
 }: GraphCanvasProps): JSX.Element {
   ensureLayoutsRegistered();
 
@@ -134,6 +142,9 @@ export function GraphCanvas({
   // `layoutstop` snapshots skip the write so a manual drop is never
   // clobbered by the trailing layout animation (FR-26).
   const userDraggedRef = useRef<boolean>(false);
+  // Last entry count we warned about so a re-render with the same overflow
+  // state does not retrigger the toast.
+  const lastWarnedEntryCountRef = useRef<number>(0);
   // Reset the "user dragged" memo when we switch projects, otherwise the
   // very first layout for a fresh project would silently skip its snapshot.
   useEffect(() => {
@@ -228,6 +239,22 @@ export function GraphCanvas({
     const before = cy.nodes().length;
     syncElements(cy, graph, persisted);
     const after = cy.nodes().length;
+
+    // Surface a non-blocking warning when the number of entry-point nodes
+    // overshoots ENTRY_PIN_LIMIT. The pinned-row layer (pinEntryPoints / the
+    // R8 styling) bails on overflow to keep the layout legible; without this
+    // callback the failure was silent and looked like an entry-point bug.
+    const entryCount = graph.nodes.filter((n) => n.is_entry).length;
+    if (
+      entryCount > ENTRY_PIN_LIMIT &&
+      entryCount !== lastWarnedEntryCountRef.current &&
+      onPinOverflow !== undefined
+    ) {
+      lastWarnedEntryCountRef.current = entryCount;
+      onPinOverflow(entryCount, ENTRY_PIN_LIMIT);
+    } else if (entryCount <= ENTRY_PIN_LIMIT) {
+      lastWarnedEntryCountRef.current = 0;
+    }
 
     // Defensive: re-enable user interaction every time we resync. Some
     // upstream layouts (cola in particular) can leave the core in a half-

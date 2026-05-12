@@ -22,7 +22,7 @@
 import type { Core, EventObject, NodeSingular } from 'cytoscape';
 import { useCallback, useEffect, useState, type JSX } from 'react';
 
-import type { Node } from '../../api/types';
+import type { Graph, Node } from '../../api/types';
 import { nodeToFqn } from './panels/fqn';
 import './ContextMenu.css';
 
@@ -62,6 +62,12 @@ export interface ContextMenuProps {
   onCollapsePackage?: (packagePath: string) => void;
   /** Triggered when the user picks "Copy path". */
   onCopyPath?: (text: string, success: boolean) => void;
+  /**
+   * Live graph snapshot. Required so `nodeToFqn` can recover the receiver
+   * for method nodes; without it, "Add as entry" on a method produces a
+   * malformed FQN the backend would reject.
+   */
+  graph?: Graph | null;
 }
 
 export function ContextMenu({
@@ -74,6 +80,7 @@ export function ContextMenu({
   onExpand,
   onCollapsePackage,
   onCopyPath,
+  graph,
 }: ContextMenuProps): JSX.Element | null {
   const [menu, setMenu] = useState<MenuState | null>(null);
 
@@ -178,13 +185,13 @@ export function ContextMenu({
     if (menu === null) {
       return;
     }
-    const fqn = nodeToFqn(menu.node);
+    const fqn = nodeToFqn(menu.node, graph);
     if (fqn === null) {
       return;
     }
     onAddEntry?.(fqn);
     close();
-  }, [menu, onAddEntry, close]);
+  }, [menu, onAddEntry, close, graph]);
 
   const handleCollapse = useCallback(() => {
     if (menu === null) {
@@ -229,7 +236,7 @@ export function ContextMenu({
     return null;
   }
 
-  const fqn = nodeToFqn(menu.node);
+  const fqn = nodeToFqn(menu.node, graph);
   const collapseLabel = menu.isCollapsed ? 'Show subtree' : 'Hide subtree';
   const collapseTestId = menu.isCollapsed ? 'context-menu-expand' : 'context-menu-collapse';
 

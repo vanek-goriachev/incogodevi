@@ -68,6 +68,23 @@ func New(manager cache.Manager, logger *slog.Logger) *Parser {
 // only the reduced view is returned and TypesUnavailable is set so callers
 // know they need a fresh load before touching go/types.
 func (p *Parser) Load(ctx context.Context, id domain.ProjectID, progress chan<- float64) (*LoadResult, error) {
+	return p.load(ctx, id, progress, false)
+}
+
+// LoadLive is like Load but never serves from the parsed.gob cache. Callers
+// that need live *types.Package data (entry resolution, reachability) must use
+// this variant, because cache hits intentionally drop the type information.
+//
+// Bypassing the cache makes second analyses pay the full packages.Load cost
+// but is the only way to honour a manual EntryPointSpec on a project whose
+// parser snapshot has already been persisted; the previous behaviour returned
+// a cached snapshot with no types and the entry resolver then rejected every
+// manual FQN as unresolvable (see docs/tech-debt.md).
+func (p *Parser) LoadLive(ctx context.Context, id domain.ProjectID, progress chan<- float64) (*LoadResult, error) {
+	return p.load(ctx, id, progress, true)
+}
+
+func (p *Parser) load(ctx context.Context, id domain.ProjectID, progress chan<- float64, bypassCache bool) (*LoadResult, error) {
 	if progress != nil {
 		defer close(progress)
 	}
@@ -77,10 +94,12 @@ func (p *Parser) Load(ctx context.Context, id domain.ProjectID, progress chan<- 
 
 	start := time.Now()
 
-	if cached, ok := p.tryCache(id); ok {
-		emit(progress, 1.0)
-		cached.ElapsedMS = elapsedMS(start)
-		return cached, nil
+	if !bypassCache {
+		if cached, ok := p.tryCache(id); ok {
+			emit(progress, 1.0)
+			cached.ElapsedMS = elapsedMS(start)
+			return cached, nil
+		}
 	}
 
 	sourcesDir := p.cache.SourcesDir(id)

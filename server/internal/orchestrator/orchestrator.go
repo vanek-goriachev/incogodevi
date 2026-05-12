@@ -301,12 +301,12 @@ func (o *Orchestrator) runPipeline(
 		}
 	}
 	if loadResult.TypesUnavailable {
-		// Cache hit only carries reduced packages — the orchestrator needs
-		// live types to run the graph builder. Surface a warning so the
-		// caller can decide whether to invalidate the cache.
+		// LoadLive should never set this. If it ever does, surface a
+		// diagnostic warning so the operator sees the regression instead of
+		// silently producing an empty graph.
 		w := domain.Warning{
 			Code:    "types_unavailable",
-			Message: "parser returned cached snapshot without live types; falling back to graph build with reduced data only",
+			Message: "parser returned snapshot without live types; entry resolution will fail for manual FQNs",
 		}
 		if err := emit(stream, domain.EventWarning, w); err != nil {
 			return err
@@ -443,7 +443,13 @@ func (o *Orchestrator) runParse(
 		}
 	}()
 
-	res, parseErr := o.parser.Load(parseCtx, id, progress)
+	// Always do a live load: cache hits drop *types.Package data, which
+	// every downstream stage (entry resolution, reachability) depends on. The
+	// parsed.gob cache is still written by LoadLive for diagnostic re-reads
+	// but never served back to the analyze pipeline. Resolves the cached-
+	// re-analyze tech-debt symptom that prevented manual entry-points from
+	// taking effect.
+	res, parseErr := o.parser.LoadLive(parseCtx, id, progress)
 	<-progressDone
 	if parseErr != nil {
 		// Translate a watchdog timeout into a clear, user-facing error so the

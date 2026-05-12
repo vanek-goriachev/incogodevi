@@ -6,13 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import type { Node } from '../api/types';
+import type { Edge, Graph, Node } from '../api/types';
 import { InfoPanel } from '../pages/Main/panels/InfoPanel';
 
 function makeNode(overrides: Partial<Node> = {}): Node {
+  // The server emits `Node.name = methodName` (no receiver). InfoPanel must
+  // recover the receiver via the graph's contains-edge — see fqn.ts.
   return {
-    id: 'api#Handler.ServeHTTP',
-    name: 'Handler.ServeHTTP',
+    id: 'method-id',
+    name: 'ServeHTTP',
     kind: 'method',
     package: 'github.com/acme/api',
     file: 'api/handler.go',
@@ -21,6 +23,36 @@ function makeNode(overrides: Partial<Node> = {}): Node {
     reachable: true,
     is_entry: false,
     ...overrides,
+  };
+}
+
+function makeGraphWithReceiver(method: Node, receiverName = 'Handler'): Graph {
+  const parent: Node = {
+    id: 'struct-id',
+    name: receiverName,
+    kind: 'struct',
+    package: method.package,
+    file: method.file,
+    line: 1,
+    exported: true,
+    reachable: true,
+    is_entry: false,
+  };
+  const edge: Edge = {
+    id: 'contains-edge',
+    source: parent.id,
+    target: method.id,
+    kind: 'contains',
+    weight: 1,
+  };
+  return {
+    project_id: 'test',
+    generated_at: '2025-01-01T00:00:00Z',
+    aggregation: 'none',
+    stats: { node_count: 2, edge_count: 1, by_kind: {}, dead_count: 0 },
+    nodes: [parent, method],
+    edges: [edge],
+    warnings: [],
   };
 }
 
@@ -54,7 +86,9 @@ describe('<InfoPanel />', () => {
   it('renders metadata for the selected node', () => {
     render(<InfoPanel selectedNode={makeNode()} />);
     expect(screen.getByTestId('info-panel-kind')).toHaveTextContent('method');
-    expect(screen.getByTestId('info-panel-name')).toHaveTextContent('Handler.ServeHTTP');
+    // `Node.name` is the bare method name on the wire; the receiver is
+    // recovered only when the parent passes the graph (see add-entry test).
+    expect(screen.getByTestId('info-panel-name')).toHaveTextContent('ServeHTTP');
     expect(screen.getByTestId('info-panel-package')).toHaveTextContent(
       'github.com/acme/api',
     );
@@ -83,7 +117,14 @@ describe('<InfoPanel />', () => {
 
   it('invokes onAddEntry with the FQN when the button is clicked', async () => {
     const onAddEntry = vi.fn();
-    render(<InfoPanel selectedNode={makeNode()} onAddEntry={onAddEntry} />);
+    const method = makeNode();
+    render(
+      <InfoPanel
+        selectedNode={method}
+        graph={makeGraphWithReceiver(method)}
+        onAddEntry={onAddEntry}
+      />,
+    );
     await userEvent.click(screen.getByTestId('info-panel-add-entry'));
     expect(onAddEntry).toHaveBeenCalledWith('github.com/acme/api#Handler.ServeHTTP');
   });

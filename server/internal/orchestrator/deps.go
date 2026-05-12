@@ -14,6 +14,10 @@ import (
 // warnings, slow loads) without spinning up packages.Load.
 type ParserService interface {
 	Load(ctx context.Context, id domain.ProjectID, progress chan<- float64) (*parser.LoadResult, error)
+	// LoadLive bypasses the parsed.gob cache so the returned snapshot carries
+	// live *types.Package data. The orchestrator needs this for every analyze
+	// run because entry resolution and reachability both require go/types.
+	LoadLive(ctx context.Context, id domain.ProjectID, progress chan<- float64) (*parser.LoadResult, error)
 }
 
 // BuilderService is the seam over graph.Builder. Tests can inject fakes that

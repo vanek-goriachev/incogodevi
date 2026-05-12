@@ -64,7 +64,7 @@ function pickEntryIds(graph: Graph, spec: EntryPointSpec): Set<string> {
   if (spec.manual.length > 0) {
     const manual = new Set(spec.manual);
     for (const node of graph.nodes) {
-      const fqn = nodeToFqn(node);
+      const fqn = nodeToFqn(node, graph);
       if (fqn !== null && manual.has(fqn)) {
         out.add(node.id);
       }

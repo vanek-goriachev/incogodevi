@@ -223,6 +223,43 @@ func TestAggregateSyntheticBucketWithoutPackageNode(t *testing.T) {
 	}
 }
 
+// TestAggregatePropagatesIsEntry guards the fix for the custom-entry-points
+// regression: aggregated package nodes now report IsEntry when any of their
+// children was flagged as an entry point. Without this propagation the FE
+// could not render the entry-pin marker on auto-aggregated (>1000 node)
+// graphs and manual entries became invisible.
+func TestAggregatePropagatesIsEntry(t *testing.T) {
+	pkgPath := "example.com/entry"
+	g := &domain.Graph{
+		Nodes: []domain.Node{
+			{ID: "p", Kind: domain.NodeKindPackage, Name: "entry", Package: pkgPath},
+			{ID: "f1", Kind: domain.NodeKindFunc, Name: "F1", Package: pkgPath, Reachable: true},
+			{ID: "f2", Kind: domain.NodeKindFunc, Name: "F2", Package: pkgPath, Reachable: true, IsEntry: true},
+		},
+		SchemaVersion: domain.CurrentSchemaVersion,
+	}
+	agg := reach.Aggregate(g)
+	if len(agg.Nodes) != 1 {
+		t.Fatalf("expected 1 package node, got %d", len(agg.Nodes))
+	}
+	if !agg.Nodes[0].IsEntry {
+		t.Fatal("aggregated package node must inherit IsEntry from a manual entry child")
+	}
+
+	// Sanity: a package with no entry-marked child must not light up.
+	gQuiet := &domain.Graph{
+		Nodes: []domain.Node{
+			{ID: "p2", Kind: domain.NodeKindPackage, Name: "quiet", Package: "example.com/quiet"},
+			{ID: "f3", Kind: domain.NodeKindFunc, Name: "F3", Package: "example.com/quiet", Reachable: true},
+		},
+		SchemaVersion: domain.CurrentSchemaVersion,
+	}
+	aggQuiet := reach.Aggregate(gQuiet)
+	if aggQuiet.Nodes[0].IsEntry {
+		t.Fatal("aggregated package node must not be marked entry when no child is")
+	}
+}
+
 func TestAggregateDoesNotMutateInput(t *testing.T) {
 	pkgs := []string{"example.com/m/a", "example.com/m/b"}
 	g := makeLargeGraph(pkgs, 5)

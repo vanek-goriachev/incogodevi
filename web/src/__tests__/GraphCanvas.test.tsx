@@ -208,4 +208,33 @@ describe('<GraphCanvas />', () => {
     fireEvent.keyDown(screen.getByTestId('graph-canvas'), { key: 'f' });
     expect(fitSpy).toHaveBeenCalled();
   });
+
+  it('invokes onPinOverflow when entry count exceeds ENTRY_PIN_LIMIT', async () => {
+    // Build a graph with 13 entry-marked nodes — one over the documented
+    // pin limit — and assert the callback fires with the actual count. This
+    // guards the demo contract requirement that the overflow surfaces as a
+    // user-visible warning rather than a silent visual failure.
+    const entries = Array.from({ length: 13 }, (_, i) => ({
+      id: `n-entry-${String(i)}`,
+      name: `entry${String(i)}`,
+      kind: 'func' as const,
+      package: 'cmd',
+      file: 'cmd/main.go',
+      line: i + 1,
+      exported: false,
+      reachable: true,
+      is_entry: true,
+    }));
+    const overflowGraph: Graph = {
+      ...FIXTURE_GRAPH,
+      nodes: entries,
+      edges: [],
+      stats: { ...FIXTURE_GRAPH.stats, node_count: entries.length, edge_count: 0 },
+    };
+    const onPinOverflow = vi.fn<(n: number, limit: number) => void>();
+    renderCanvas({ graph: overflowGraph, onPinOverflow });
+    await waitFor(() => {
+      expect(onPinOverflow).toHaveBeenCalledWith(13, 12);
+    });
+  });
 });
