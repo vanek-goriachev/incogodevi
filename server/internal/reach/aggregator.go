@@ -29,7 +29,9 @@ func Aggregate(g *domain.Graph) *domain.Graph {
 		Name       string
 		Path       string
 		Reachable  bool
+		External   bool
 		ChildCount int
+		DeadCount  int
 	}
 
 	buckets := make(map[string]*packageBucket)
@@ -51,7 +53,7 @@ func Aggregate(g *domain.Graph) *domain.Graph {
 		if _, ok := buckets[n.Package]; ok {
 			continue
 		}
-		buckets[n.Package] = &packageBucket{Name: n.Name, Path: n.Package, Reachable: n.Reachable}
+		buckets[n.Package] = &packageBucket{Name: n.Name, Path: n.Package, Reachable: n.Reachable, External: n.External}
 		pkgOrder = append(pkgOrder, n.Package)
 		pkgIDByPath[n.Package] = n.ID
 	}
@@ -66,7 +68,7 @@ func Aggregate(g *domain.Graph) *domain.Graph {
 		}
 		bucket, ok := buckets[n.Package]
 		if !ok {
-			bucket = &packageBucket{Name: shortName(n.Package), Path: n.Package}
+			bucket = &packageBucket{Name: shortName(n.Package), Path: n.Package, External: n.External}
 			buckets[n.Package] = bucket
 			pkgOrder = append(pkgOrder, n.Package)
 			pkgIDByPath[n.Package] = domain.NodeID(n.Package, "", "")
@@ -74,6 +76,8 @@ func Aggregate(g *domain.Graph) *domain.Graph {
 		bucket.ChildCount++
 		if n.Reachable {
 			bucket.Reachable = true
+		} else {
+			bucket.DeadCount++
 		}
 	}
 
@@ -82,14 +86,24 @@ func Aggregate(g *domain.Graph) *domain.Graph {
 	nodes := make([]domain.Node, 0, len(pkgOrder))
 	for _, pkg := range pkgOrder {
 		bucket := buckets[pkg]
+		// partial_dead = at least one but not every child is dead.
+		// fully_dead   = every child (and there is at least one) is dead.
+		// Both flags stay false on packages without children so the FE only
+		// renders the marker when the data backs it up (R4-5).
+		partial := bucket.ChildCount > 0 && bucket.DeadCount > 0 && bucket.DeadCount < bucket.ChildCount
+		fully := bucket.ChildCount > 0 && bucket.DeadCount == bucket.ChildCount
 		nodes = append(nodes, domain.Node{
-			ID:         pkgIDByPath[pkg],
-			Name:       bucket.Name,
-			Kind:       domain.NodeKindPackage,
-			Package:    bucket.Path,
-			Exported:   true,
-			Reachable:  bucket.Reachable,
-			ChildCount: bucket.ChildCount,
+			ID:          pkgIDByPath[pkg],
+			Name:        bucket.Name,
+			Kind:        domain.NodeKindPackage,
+			Package:     bucket.Path,
+			Exported:    true,
+			Reachable:   bucket.Reachable,
+			ChildCount:  bucket.ChildCount,
+			DeadCount:   bucket.DeadCount,
+			PartialDead: partial,
+			FullyDead:   fully,
+			External:    bucket.External,
 		})
 	}
 

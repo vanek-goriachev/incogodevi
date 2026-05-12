@@ -25,6 +25,24 @@ const PartialGraphChunkSize = 100
 // the SSE buffer cannot be flooded on very small projects (T13 spec).
 const PartialGraphMinInterval = 100 * time.Millisecond
 
+// PartialGraphMaxChunks caps the total number of partial_graph events emitted
+// during a single analysis (R6 fix). Without it, a graph with 100k+ nodes
+// emits 1000+ chunks, each waited on for PartialGraphMinInterval, dominating
+// total run time at ~100s of pure throttle for a project the FE will then
+// auto-aggregate to a few hundred package nodes anyway. Capping the chunk
+// count lets the orchestrator scale the per-chunk size up on large graphs so
+// the throttle window stays bounded (≤ MaxChunks × MinInterval ≈ 3s).
+const PartialGraphMaxChunks = 30
+
+// ParsePhaseDeadline is the wall-clock budget for the parser stage. The
+// budget is generous because the first parse of any project pulls its full
+// transitive dep tree through go list / go mod download — Xray-core alone
+// fetches ~120 modules, which on a cold module cache routinely takes several
+// minutes. We only want the watchdog to catch a parser that is genuinely
+// hung, not interrupt a healthy download (R6 fix; raised from 90s after the
+// initial cap turned out to abort legitimate cold-cache fetches).
+const ParsePhaseDeadline = 10 * time.Minute
+
 // Options bundles the dependencies an Orchestrator needs at construction.
 //
 // Every field is required except Logger (defaults to slog.Default()). Mocking
@@ -48,6 +66,13 @@ type Options struct {
 
 	// PartialMinInterval, when positive, overrides PartialGraphMinInterval.
 	PartialMinInterval time.Duration
+
+	// PartialMaxChunks, when positive, overrides PartialGraphMaxChunks.
+	PartialMaxChunks int
+
+	// ParseDeadline, when positive, overrides ParsePhaseDeadline. Tests
+	// supply a small value to assert the watchdog fires.
+	ParseDeadline time.Duration
 }
 
 // Orchestrator runs the analysis pipeline (parser → graph → entry → reach →
@@ -58,15 +83,17 @@ type Options struct {
 // inflight sync.Map maintains one mutex per project so two POST /analyze
 // calls for different projects do not contend.
 type Orchestrator struct {
-	cache    CacheWriter
-	parser   ParserService
-	builder  BuilderService
-	resolver EntryResolverService
-	reach    ReachService
-	logger   *slog.Logger
-	now      func() time.Time
-	chunk    int
-	minTick  time.Duration
+	cache         CacheWriter
+	parser        ParserService
+	builder       BuilderService
+	resolver      EntryResolverService
+	reach         ReachService
+	logger        *slog.Logger
+	now           func() time.Time
+	chunk         int
+	minTick       time.Duration
+	maxChunks     int
+	parseDeadline time.Duration
 
 	inflight sync.Map // map[domain.ProjectID]*sync.Mutex
 }
@@ -106,16 +133,26 @@ func New(opts Options) *Orchestrator {
 	if tick <= 0 {
 		tick = PartialGraphMinInterval
 	}
+	maxChunks := opts.PartialMaxChunks
+	if maxChunks <= 0 {
+		maxChunks = PartialGraphMaxChunks
+	}
+	parseDeadline := opts.ParseDeadline
+	if parseDeadline <= 0 {
+		parseDeadline = ParsePhaseDeadline
+	}
 	return &Orchestrator{
-		cache:    opts.Cache,
-		parser:   opts.Parser,
-		builder:  opts.Builder,
-		resolver: opts.Resolver,
-		reach:    opts.Reach,
-		logger:   logger,
-		now:      now,
-		chunk:    chunk,
-		minTick:  tick,
+		cache:         opts.Cache,
+		parser:        opts.Parser,
+		builder:       opts.Builder,
+		resolver:      opts.Resolver,
+		reach:         opts.Reach,
+		logger:        logger,
+		now:           now,
+		chunk:         chunk,
+		minTick:       tick,
+		maxChunks:     maxChunks,
+		parseDeadline: parseDeadline,
 	}
 }
 
@@ -368,11 +405,24 @@ func (o *Orchestrator) runPipeline(
 // runParse invokes the parser and forwards each progress tick as a `phase`
 // event. The progress channel is closed by the parser; the forwarder
 // goroutine exits cleanly when the channel drains.
+//
+// A watchdog deadline (o.parseDeadline) is layered on top of the caller's
+// context so a parse that blocks on `go list` / `go mod download` for a
+// project whose transitive deps are not in the module cache fails fast with
+// a clear error instead of leaving the user staring at a "parsing" badge
+// for several minutes (R6 fix).
 func (o *Orchestrator) runParse(
 	ctx context.Context,
 	id domain.ProjectID,
 	stream *api.SSEStreamer,
 ) (loadResult *parser.LoadResult, err error) {
+	parseCtx := ctx
+	var cancel context.CancelFunc = func() {}
+	if o.parseDeadline > 0 {
+		parseCtx, cancel = context.WithTimeout(ctx, o.parseDeadline)
+	}
+	defer cancel()
+
 	progress := make(chan float64, 64)
 	progressDone := make(chan struct{})
 	go func() {
@@ -393,9 +443,15 @@ func (o *Orchestrator) runParse(
 		}
 	}()
 
-	res, parseErr := o.parser.Load(ctx, id, progress)
+	res, parseErr := o.parser.Load(parseCtx, id, progress)
 	<-progressDone
 	if parseErr != nil {
+		// Translate a watchdog timeout into a clear, user-facing error so the
+		// FE can render a useful message instead of "context canceled".
+		if errors.Is(parseErr, context.DeadlineExceeded) && ctx.Err() == nil {
+			return nil, fmt.Errorf("parse exceeded %s budget; the project's dependencies may need to be downloaded — retry with a vendored archive: %w",
+				o.parseDeadline, parseErr)
+		}
 		return nil, parseErr
 	}
 	return res, nil
@@ -438,17 +494,36 @@ func (o *Orchestrator) runBuild(
 // streamPartialGraph slices the freshly built graph into PartialChunkSize
 // chunks and emits them with a minimum spacing of PartialMinInterval so the
 // SSE buffer cannot drown on very small projects.
+//
+// On large graphs (R6 fix), the per-chunk size is grown so the total number
+// of emitted chunks never exceeds o.maxChunks. Without this clamp, a 100k+
+// node graph emits 1000+ chunks each waiting o.minTick (≈ 100 ms), turning
+// the throttle into the dominant phase of the entire pipeline (~100 s of
+// pure sleep) — and the FE doesn't even consume the per-chunk node payloads
+// for rendering, it re-fetches the aggregated graph after `done`. Capping
+// the chunk count keeps the throttle window bounded (≤ maxChunks × minTick).
 func (o *Orchestrator) streamPartialGraph(stream *api.SSEStreamer, g *domain.Graph) error {
 	if g == nil || len(g.Nodes) == 0 {
 		// Always emit at least one (possibly empty) partial_graph so clients
 		// can rely on its presence to switch UI state.
 		return emit(stream, domain.EventPartialGraph, partialPayload{Nodes: []domain.Node{}, Edges: []domain.Edge{}})
 	}
-	last := time.Time{}
 	chunk := o.chunk
 	if chunk <= 0 {
 		chunk = PartialGraphChunkSize
 	}
+	maxChunks := o.maxChunks
+	if maxChunks <= 0 {
+		maxChunks = PartialGraphMaxChunks
+	}
+	// Grow the chunk size when the natural slicing would exceed maxChunks so
+	// the entire graph fits in at most maxChunks emissions. Use ceiling
+	// division so the last chunk is never larger than the others by more than
+	// one node.
+	if (len(g.Nodes)+chunk-1)/chunk > maxChunks {
+		chunk = (len(g.Nodes) + maxChunks - 1) / maxChunks
+	}
+	last := time.Time{}
 	for offset := 0; offset < len(g.Nodes); offset += chunk {
 		end := offset + chunk
 		if end > len(g.Nodes) {

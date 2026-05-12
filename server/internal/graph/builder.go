@@ -189,6 +189,7 @@ func (s *buildState) addPackage(pkg parser.LivePackage) error {
 		Kind:     domain.NodeKindPackage,
 		Package:  pkg.PkgPath,
 		Exported: true,
+		External: !pkg.IsMain,
 	}
 	s.upsertNode(pkgNode)
 	s.pkgID[pkg.PkgPath] = pkgNode.ID
@@ -228,6 +229,7 @@ func (s *buildState) addTypeName(pkg parser.LivePackage, pkgNodeID string, tn *t
 		File:     pos.Filename,
 		Line:     pos.Line,
 		Exported: tn.Exported(),
+		External: !pkg.IsMain,
 	}
 	s.upsertNode(node)
 	s.typeByObj[tn] = node.ID
@@ -269,6 +271,7 @@ func (s *buildState) addStructFields(pkg parser.LivePackage, parentID, typeName 
 			File:     pos.Filename,
 			Line:     pos.Line,
 			Exported: f.Exported(),
+			External: !pkg.IsMain,
 		}
 		s.upsertNode(fieldNode)
 		s.varByObj[f] = fieldNode.ID
@@ -308,6 +311,7 @@ func (s *buildState) addFunc(pkg parser.LivePackage, parentID string, fn *types.
 		File:     pos.Filename,
 		Line:     pos.Line,
 		Exported: isExportedName(fn.Name()),
+		External: !pkg.IsMain,
 	}
 	s.upsertNode(node)
 	s.funcByObj[fn] = node.ID
@@ -326,6 +330,7 @@ func (s *buildState) addVar(pkg parser.LivePackage, pkgNodeID string, v *types.V
 		File:     pos.Filename,
 		Line:     pos.Line,
 		Exported: v.Exported(),
+		External: !pkg.IsMain,
 	}
 	s.upsertNode(node)
 	s.varByObj[v] = node.ID
@@ -343,6 +348,7 @@ func (s *buildState) addConst(pkg parser.LivePackage, pkgNodeID string, c *types
 		File:     pos.Filename,
 		Line:     pos.Line,
 		Exported: c.Exported(),
+		External: !pkg.IsMain,
 	}
 	s.upsertNode(node)
 	s.constByObj[c] = node.ID

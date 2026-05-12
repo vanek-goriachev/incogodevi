@@ -15,8 +15,9 @@ func Greet(who string) string {
 	return g.Message
 }
 
-// UnusedHelper is intentionally never called so the dead-code report has at
-// least one entry to surface.
+// UnusedHelper has no callers but lives in a package that is imported by main,
+// so the bidirectional contains traversal still keeps it reachable. The
+// internal/dead package is the actual canary for the dead-code report.
 func UnusedHelper() string { return "unused" }
 
 // internalCounter is unexported and exists to verify scope filtering.

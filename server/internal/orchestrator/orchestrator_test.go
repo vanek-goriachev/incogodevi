@@ -232,7 +232,15 @@ func TestPipelineHappy(t *testing.T) {
 		t.Fatalf("ReadDeadCode: %v", err)
 	}
 	if dc.EntriesCount == 0 {
-		t.Fatal("expected at least one dead-code entry on the simple fixture (UnusedHelper)")
+		t.Fatal("expected at least one dead-code entry on the simple fixture (NeverCalled)")
+	}
+	// Dead-code report must exclude stdlib / third-party noise. The simple
+	// fixture's only internal-module dead symbol is internal/dead.NeverCalled,
+	// so every reported entry must live under example.com/simple.
+	for _, ent := range dc.Entries {
+		if !strings.HasPrefix(ent.Package, "example.com/simple") {
+			t.Fatalf("dead-code entry leaked external package: %+v", ent)
+		}
 	}
 
 	// At least one node in the graph must be marked as entry (func main).
@@ -497,6 +505,101 @@ func TestPartialGraphChunking(t *testing.T) {
 	}
 	if partials != 3 {
 		t.Fatalf("partial_graph count = %d, want 3 chunks", partials)
+	}
+}
+
+// TestPartialGraphChunkCap exercises the watchdog that prevents
+// streamPartialGraph from emitting an unbounded number of throttled
+// frames on huge graphs. With chunk size 10, a 1000-node graph would
+// otherwise emit 100 frames spaced by PartialMinInterval, dominating
+// the perceived analyze duration. The cap (PartialMaxChunks) inflates
+// the chunk size so the total number of partial frames stays at most
+// PartialMaxChunks.
+func TestPartialGraphChunkCap(t *testing.T) {
+	const total = 1000
+	const cap = 5
+	g := &domain.Graph{}
+	for i := 0; i < total; i++ {
+		g.Nodes = append(g.Nodes, domain.Node{ID: itoa(i), Name: itoa(i), Kind: domain.NodeKindFunc})
+	}
+	o := orchestrator.New(orchestrator.Options{
+		Cache:              &noopCache{},
+		Parser:             &fakeParser{},
+		Builder:            &fakeBuilder{result: g},
+		Resolver:           &fakeResolver{},
+		Reach:              &fakeReach{},
+		PartialChunkSize:   10,
+		PartialMaxChunks:   cap,
+		PartialMinInterval: 1 * time.Millisecond,
+	})
+	rec := httptest.NewRecorder()
+	stream, _ := api.NewSSEStreamer(rec)
+	if err := o.Run(context.Background(), domain.NewProjectID(), domain.DefaultEntryPointSpec(), domain.DefaultFilters(), stream); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	frames := parseFrames(t, rec.Body.String())
+	partials := 0
+	totalNodes := 0
+	for _, f := range frames {
+		if f.Event != "partial_graph" {
+			continue
+		}
+		partials++
+		nodes := f.Data["nodes"].([]any)
+		totalNodes += len(nodes)
+	}
+	if partials > cap {
+		t.Fatalf("partial_graph count = %d, want <= %d", partials, cap)
+	}
+	if partials == 0 {
+		t.Fatalf("expected at least one partial_graph frame")
+	}
+	if totalNodes != total {
+		t.Fatalf("aggregate nodes across partials = %d, want %d", totalNodes, total)
+	}
+}
+
+// TestParsePhaseDeadlineExceeded asserts the parse watchdog cancels a
+// stuck parser stage and surfaces a structured done:failed event whose
+// error message points the user at the likely cause (deps download).
+// Without the watchdog, a first-time upload of an unvendored project
+// would block indefinitely while go list / go mod download streams
+// archives for every transitive dep, with the FE showing only a
+// "parsing" badge.
+func TestParsePhaseDeadlineExceeded(t *testing.T) {
+	o := orchestrator.New(orchestrator.Options{
+		Cache: &noopCache{},
+		Parser: &fakeParser{loadFn: func(ctx context.Context, _ domain.ProjectID, progress chan<- float64) (*parser.LoadResult, error) {
+			defer close(progress)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}},
+		Builder:       &fakeBuilder{},
+		Resolver:      &fakeResolver{},
+		Reach:         &fakeReach{},
+		ParseDeadline: 50 * time.Millisecond,
+	})
+	rec := httptest.NewRecorder()
+	stream, _ := api.NewSSEStreamer(rec)
+	err := o.Run(context.Background(), domain.NewProjectID(), domain.DefaultEntryPointSpec(), domain.DefaultFilters(), stream)
+	if err == nil {
+		t.Fatal("expected parse deadline error, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want wrapping context.DeadlineExceeded", err)
+	}
+	frames := parseFrames(t, rec.Body.String())
+	last := frames[len(frames)-1]
+	if last.Event != "done" || last.Data["phase"] != "failed" {
+		t.Fatalf("last frame = %+v", last)
+	}
+	envelope := last.Data["error"].(map[string]any)
+	if envelope["code"] != "parse_failed" {
+		t.Fatalf("error.code = %v", envelope["code"])
+	}
+	msg, _ := envelope["message"].(string)
+	if msg == "" || !strings.Contains(msg, "budget") {
+		t.Fatalf("error.message = %q, want guidance about budget", msg)
 	}
 }
 

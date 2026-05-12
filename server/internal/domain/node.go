@@ -63,6 +63,19 @@ type Node struct {
 	IsEntry    bool     `json:"is_entry"`
 	Doc        string   `json:"doc,omitempty"`
 	ChildCount int      `json:"child_count,omitempty"`
+	// External is true when the node belongs to a package outside the user's
+	// main module (stdlib or third-party deps loaded transitively via
+	// packages.Load NeedDeps). The frontend uses this to optionally hide
+	// such nodes and to short-circuit "expand" actions that would otherwise
+	// hit the scopeGraph endpoint and return an empty result.
+	External bool `json:"external,omitempty"`
+	// DeadCount and PartialDead/FullyDead are populated only on aggregated
+	// package nodes (R4-5). The FE uses them to render packages where some
+	// (but not all) members are dead with a distinct visual style instead of
+	// treating them like fully-dead packages.
+	DeadCount   int  `json:"dead_count,omitempty"`
+	PartialDead bool `json:"partial_dead,omitempty"`
+	FullyDead   bool `json:"fully_dead,omitempty"`
 }
 
 // NodeID returns the stable identifier of a node, derived from its canonical

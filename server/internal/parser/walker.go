@@ -19,6 +19,7 @@ func reduce(pkg *packages.Package) *ReducedPackage {
 	}
 	if pkg.Module != nil {
 		out.Module = pkg.Module.Path
+		out.IsMain = pkg.Module.Main
 	}
 	if pkg.Types == nil {
 		return out

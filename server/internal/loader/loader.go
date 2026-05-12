@@ -169,6 +169,10 @@ func (l *Loader) Load(ctx context.Context, r io.Reader, declaredSize int64, disp
 		return nil, err
 	}
 
+	if err := flattenSingleWrapperDir(project.SourcesDir); err != nil {
+		return nil, err
+	}
+
 	moduleName, err := readModuleName(project.SourcesDir)
 	if err != nil {
 		return nil, err
@@ -456,6 +460,75 @@ func findGoMod(root string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("loader: no go.mod under %q: %w", root, domain.ErrGoModMissing)
+}
+
+// flattenSingleWrapperDir promotes the contents of a single top-level wrapper
+// directory to root when the archive layout is `wrapper/go.mod` plus
+// everything else nested inside `wrapper/` (the typical result of
+// `zip -r foo.zip foo/`). Without this step the parser receives SourcesDir as
+// the working directory but `go list ./...` sees no module file and returns
+// "directory prefix . does not contain main module".
+//
+// macOS Finder injects `__MACOSX/` and `.DS_Store` next to the actual payload;
+// they are ignored when counting top-level entries and removed after a
+// successful flatten so the final tree is clean.
+//
+// The flatten is intentionally conservative: it only fires when (a) exactly
+// one significant top-level entry exists, (b) it is a directory, and (c) it
+// contains a go.mod at its root. Any other shape — multi-module monorepos,
+// archives without a wrapper, archives whose wrapper is just `cmd/` — is left
+// untouched so the existing two-level findGoMod search still applies.
+func flattenSingleWrapperDir(root string) error {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return fmt.Errorf("loader: read root for flatten: %w", err)
+	}
+
+	var only os.DirEntry
+	for _, e := range entries {
+		if isFinderCruft(e.Name()) {
+			continue
+		}
+		if only != nil {
+			return nil
+		}
+		only = e
+	}
+	if only == nil || !only.IsDir() {
+		return nil
+	}
+
+	wrapper := filepath.Join(root, only.Name())
+	if info, err := os.Stat(filepath.Join(wrapper, goModFileName)); err != nil || info.IsDir() {
+		return nil
+	}
+
+	nested, err := os.ReadDir(wrapper)
+	if err != nil {
+		return fmt.Errorf("loader: read wrapper %q: %w", wrapper, err)
+	}
+	for _, e := range nested {
+		from := filepath.Join(wrapper, e.Name())
+		to := filepath.Join(root, e.Name())
+		if _, err := os.Stat(to); err == nil {
+			return nil
+		}
+		if err := os.Rename(from, to); err != nil {
+			return fmt.Errorf("loader: promote %q: %w", from, err)
+		}
+	}
+	if err := os.Remove(wrapper); err != nil {
+		return fmt.Errorf("loader: remove wrapper %q: %w", wrapper, err)
+	}
+	_ = os.RemoveAll(filepath.Join(root, "__MACOSX"))
+	_ = os.Remove(filepath.Join(root, ".DS_Store"))
+	return nil
+}
+
+// isFinderCruft returns true for the cosmetic entries macOS Finder injects
+// into archives — `__MACOSX/` (resource-fork sidecar) and `.DS_Store`.
+func isFinderCruft(name string) bool {
+	return name == "__MACOSX" || name == ".DS_Store"
 }
 
 // addOverflow returns a + b and reports whether the addition overflowed

@@ -87,8 +87,10 @@ func (a *Analyzer) Mark(g *domain.Graph, entryIDs []string) error {
 //
 // Package nodes are intentionally omitted: a package is "dead" only when all
 // of its children are dead, and reporting it alongside its members would
-// double-count entries. Entries are sorted by FQN so the JSON output is
-// deterministic across runs.
+// double-count entries. External nodes (stdlib / third-party deps) are also
+// skipped — the user only cares about dead code in their own module, and
+// listing every unused stdlib symbol would dwarf the signal. Entries are
+// sorted by FQN so the JSON output is deterministic across runs.
 //
 // generated_at and project_id are zero values; the HTTP layer (T16) overlays
 // the live values when serialising the response.
@@ -104,6 +106,9 @@ func (a *Analyzer) DeadCode(g *domain.Graph) *domain.DeadCodeReport {
 	for i := range g.Nodes {
 		n := &g.Nodes[i]
 		if n.Reachable || n.Kind == domain.NodeKindPackage {
+			continue
+		}
+		if n.External {
 			continue
 		}
 		entries = append(entries, domain.DeadCodeEntry{
@@ -148,10 +153,13 @@ func indexNodes(nodes []domain.Node) map[string]int {
 //   - calls, references, embeds: source → target only.
 //   - implements: bidirectional. Reaching an interface pulls in every
 //     implementation; reaching an implementation pulls in the interface.
-//   - contains: bidirectional. A reachable child keeps its container alive
-//     (so methods do not detach from their struct/package), and a reachable
-//     container exposes its members as live (entry on a struct should reach
-//     its methods/fields).
+//   - contains: source → target only (parent → child). A reachable container
+//     exposes its members as live (entry on a struct reaches its methods and
+//     fields) but a reachable child does NOT pull its container or its
+//     siblings alive. This stops a single reached method from snowballing
+//     through its struct, package, and every other symbol the package owns
+//     — the previous bidirectional traversal made "live only" mode show
+//     phantom dead components alongside their reached siblings (R4-6).
 //   - imports: not traversed. Importing a package does not imply that every
 //     symbol inside it is used; only direct calls/references prove use.
 //
@@ -161,9 +169,9 @@ func buildAdjacency(edges []domain.Edge) map[string][]string {
 	adj := make(map[string][]string)
 	for _, e := range edges {
 		switch e.Kind {
-		case domain.EdgeKindCalls, domain.EdgeKindReferences, domain.EdgeKindEmbeds:
+		case domain.EdgeKindCalls, domain.EdgeKindReferences, domain.EdgeKindEmbeds, domain.EdgeKindContains:
 			adj[e.Source] = append(adj[e.Source], e.Target)
-		case domain.EdgeKindContains, domain.EdgeKindImplements:
+		case domain.EdgeKindImplements:
 			adj[e.Source] = append(adj[e.Source], e.Target)
 			adj[e.Target] = append(adj[e.Target], e.Source)
 		case domain.EdgeKindImports:

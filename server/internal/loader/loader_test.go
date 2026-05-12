@@ -214,8 +214,84 @@ func TestHappyPathSubdirGoMod(t *testing.T) {
 		t.Errorf("name = %q, want custom (display override)", meta.Name)
 	}
 	src := mgr.SourcesDir(meta.ID)
-	if _, err := os.Stat(filepath.Join(src, "repo-v1", "go.mod")); err != nil {
-		t.Fatalf("nested go.mod: %v", err)
+	if _, err := os.Stat(filepath.Join(src, "go.mod")); err != nil {
+		t.Fatalf("flattened go.mod: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(src, "main.go")); err != nil {
+		t.Fatalf("flattened main.go: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(src, "repo-v1")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("wrapper dir still present: %v", err)
+	}
+}
+
+func TestFlattenIgnoresMacOSFinderCruft(t *testing.T) {
+	t.Parallel()
+	ldr, mgr := newLoader(t)
+	body := buildZip(t, []zipEntry{
+		{Name: "__MACOSX/", IsDir: true},
+		{Name: "__MACOSX/._go.mod", Body: []byte("resource fork sidecar")},
+		{Name: "server/", IsDir: true},
+		{Name: "server/go.mod", Body: goodGoMod("example.com/finder")},
+		{Name: "server/main.go", Body: []byte("package main\n")},
+	})
+
+	meta, err := ldr.Load(context.Background(), bytes.NewReader(body), int64(len(body)), "")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	src := mgr.SourcesDir(meta.ID)
+	if _, err := os.Stat(filepath.Join(src, "go.mod")); err != nil {
+		t.Fatalf("flattened go.mod: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(src, "server")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("wrapper dir still present: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(src, "__MACOSX")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("__MACOSX still present: %v", err)
+	}
+}
+
+func TestFlattenSkippedWhenWrapperHasNoGoMod(t *testing.T) {
+	t.Parallel()
+	ldr, mgr := newLoader(t)
+	body := buildZip(t, []zipEntry{
+		{Name: "go.mod", Body: goodGoMod("example.com/nested")},
+		{Name: "cmd/", IsDir: true},
+		{Name: "cmd/server/", IsDir: true},
+		{Name: "cmd/server/main.go", Body: []byte("package main\n")},
+	})
+
+	meta, err := ldr.Load(context.Background(), bytes.NewReader(body), int64(len(body)), "")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	src := mgr.SourcesDir(meta.ID)
+	if _, err := os.Stat(filepath.Join(src, "cmd", "server", "main.go")); err != nil {
+		t.Fatalf("nested layout should be preserved: %v", err)
+	}
+}
+
+func TestFlattenSkippedWhenMultipleTopLevelEntries(t *testing.T) {
+	t.Parallel()
+	ldr, mgr := newLoader(t)
+	body := buildZip(t, []zipEntry{
+		{Name: "server/", IsDir: true},
+		{Name: "server/go.mod", Body: goodGoMod("example.com/multi")},
+		{Name: "server/main.go", Body: []byte("package main\n")},
+		{Name: "README.md", Body: []byte("# multi-module repo\n")},
+	})
+
+	meta, err := ldr.Load(context.Background(), bytes.NewReader(body), int64(len(body)), "")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	src := mgr.SourcesDir(meta.ID)
+	if _, err := os.Stat(filepath.Join(src, "server", "go.mod")); err != nil {
+		t.Fatalf("wrapper preserved when sibling exists: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(src, "README.md")); err != nil {
+		t.Fatalf("sibling preserved: %v", err)
 	}
 }
 
