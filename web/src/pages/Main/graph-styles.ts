@@ -305,15 +305,22 @@ export function buildStylesheet(theme: ThemeTokens): StylesheetStyle[] {
   // Without this, cross-package imports edges traced over the package
   // compound rectangles were rendered *behind* them and the user saw the
   // inter-package dependencies vanish on first render even though the data
-  // was present (1838 edges in the live aggregated payload). `opacity: 0.85`
-  // is retained — the visibility issue was paint order, not contrast.
+  // was present (1838 edges in the live aggregated payload).
+  //
+  // Multirow PR follow-up: with hundreds of cross-package edges visible at
+  // once, the previous `opacity: 0.85` was still visually swamped by the
+  // dashed compound borders when many ran in parallel. Bumped to 0.95 and
+  // arrow-scale 1.0 so each individual arrow stays legible on a 1.4 MP
+  // canvas. No later selector overrides these (verified in the live DOM
+  // via `e.renderedStyle()` — no edge-class style sets `opacity` or
+  // `target-arrow-shape` lower except `.dead` which is intentional).
   sheet.push({
     selector: 'edge',
     style: {
       'curve-style': 'bezier',
       'target-arrow-shape': 'triangle',
-      'arrow-scale': 0.9,
-      opacity: 0.85,
+      'arrow-scale': 1.0,
+      opacity: 0.95,
       'z-index': 2,
     },
   });

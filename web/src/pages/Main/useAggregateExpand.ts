@@ -682,7 +682,11 @@ function applyExpansion(
     const cn = cy.$id(id);
     if (cn.empty()) continue;
     const isEntry = cn.data('is_entry') === true || cn.hasClass('entry');
-    localNodes.push({ id, isEntry });
+    // Read live render width so the scoped positioner respects per-node
+    // footprints — keeps the R8 invariant (parent's box hugs children)
+    // tight when struct/method labels happen to be wide.
+    const w = Number.isFinite(cn.outerWidth()) ? cn.outerWidth() : undefined;
+    localNodes.push({ id, isEntry, ...(w !== undefined ? { width: w } : {}) });
     if (isEntry) localEntries.add(id);
   }
   const localEdges: LayoutEdge[] = [];
@@ -704,6 +708,12 @@ function applyExpansion(
       topPadding: 60,
       layerGap: 70,
       minNodeGap: 110,
+      // The scoped layout rarely has more than 10 siblings per layer; cap
+      // the wrap threshold low so even modestly-sized packages stay tall
+      // and narrow inside the compound box rather than wide and short.
+      maxNodesPerRow: 8,
+      rowGap: 50,
+      nodeBuffer: 20,
       deadRegion: { dx: 90, dy: 70 },
     },
   );
