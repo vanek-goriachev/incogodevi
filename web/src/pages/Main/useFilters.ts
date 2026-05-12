@@ -108,9 +108,18 @@ export function applyFilters(cy: Core, spec: FilterSpec): void {
       });
     }
 
-    // ---- 3. hide edges that lost an endpoint ----
+    // ---- 3. hide edges only when BOTH endpoints are hidden ----
+    // Reach-depth PR (Bug 2 fix): the previous rule hid an edge whenever
+    // EITHER endpoint was hidden. Combined with the default `hideExternal:
+    // true`, that wiped out every internal→external inter-package edge on
+    // first paint — the user-visible symptom of "edges not visible". Now we
+    // only hide an edge when neither endpoint will be drawn; an internal
+    // package node linking to a hidden external still renders the edge so
+    // the dependency boundary is legible without re-toggling `hideExternal`.
     cy.edges().forEach((edge) => {
-      if (edge.source().hasClass('hidden') || edge.target().hasClass('hidden')) {
+      const srcHidden = edge.source().hasClass('hidden');
+      const tgtHidden = edge.target().hasClass('hidden');
+      if (srcHidden && tgtHidden) {
         edge.addClass('hidden');
       }
     });

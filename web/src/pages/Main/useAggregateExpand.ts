@@ -21,14 +21,17 @@ import type {
   Core,
   ElementDefinition,
   EventObject,
-  LayoutOptions,
   NodeSingular,
 } from 'cytoscape';
 
 import type { ApiClient } from '../../api/client';
 import { ApiError } from '../../api/client';
 import type { Edge, Node } from '../../api/types';
-import { layoutOptionsFor } from './GraphCanvas';
+import {
+  computeReachDepthPositions,
+  type LayoutEdge,
+  type LayoutNode,
+} from './layout/reachDepth';
 
 /**
  * No hard cap on the number of simultaneously expanded packages.
@@ -663,75 +666,73 @@ function applyExpansion(
     return 0;
   }
 
-  // Build the collection of freshly inserted nodes plus their incident edges
-  // — this is the only sub-graph fcose is allowed to relax. The surrounding
-  // still-aggregated nodes stay exactly where they are (no lock needed since
-  // we scope the layout via `eles`, but we keep the user-interaction re-arm).
-  // Internal contains edges are excluded from the layout collection so fcose
-  // does not factor them into its force model — otherwise they would still
-  // act as springs even though they are visually hidden.
-  let newCollection = cy.collection();
-  for (const id of newIds) {
-    newCollection = newCollection.union(cy.$id(id));
-  }
-  const layoutEles = newCollection
-    .union(newCollection.connectedEdges())
-    .difference(cy.edges('.contains-internal'));
-
+  // R8 invariant: scope the layout to the newly inserted children only.
+  // The pure reach-depth positioner replaces the old fcose pass — same
+  // algorithm as the canvas-wide layout, but the node/edge inputs only
+  // include the new compound's children, so surrounding still-aggregated
+  // nodes never move (we never call `n.position(...)` on them).
   cy.userPanningEnabled(true);
   cy.userZoomingEnabled(true);
 
-  // Compound-aware fcose tuning (R5): the layout runs over the compound parent
-  // + new children, so `nestingFactor` controls how much the simulation
-  // squeezes children inside the parent. A small value keeps the cluster tight
-  // and the compound's bounding box hugs its members. nodeRepulsion is dialed
-  // down a touch for the same reason — the previous 4500 was tuned for the
-  // unboxed (R3) flow where members spread across the canvas.
-  //
-  // R7: source these from the shared `layoutOptionsFor('expansion', ...)`
-  // helper so the canvas-wide and per-compound tunings live next to each
-  // other and stay in sync. The helper omits `eles`; we attach it here since
-  // only this call site scopes the layout to the freshly added sub-graph.
-  const baseExpansionOpts = layoutOptionsFor(
-    'expansion',
-    { nodes: [], edges: [] } as unknown as Parameters<typeof layoutOptionsFor>[1],
-    reducedMotion,
-  ) as unknown as Record<string, unknown>;
-  const layoutOpts: LayoutOptions = {
-    ...baseExpansionOpts,
-    eles: layoutEles,
-  } as unknown as LayoutOptions;
+  void reducedMotion; // pure layout: animation is not modelled here
 
-  // Finishing touches: re-arm pan/zoom in case fcose's animation left the
-  // core half-disabled. We deliberately do NOT call `cy.fit(newCollection)`
-  // — that would re-frame the viewport onto just the new sub-graph and
-  // shove the surrounding still-aggregated packages off-screen, destroying
-  // the user's mental map.
-  const finishExpansion = (): void => {
-    try {
-      cy.userPanningEnabled(true);
-      cy.userZoomingEnabled(true);
-    } catch {
-      // Best-effort polish — never surface a layout-time exception as a
-      // "Failed to expand" toast. The nodes are already on the canvas.
-    }
-  };
-
-  try {
-    // Run the layout via `eles.layout(...)` so the `eles` scoping is
-    // honoured by every fcose version (fcose ignores the `eles` option
-    // passed to `cy.layout`). Pre-placed positions seed the simulation;
-    // randomize=false keeps them sticky so children fan out from the
-    // package's old centre instead of teleporting elsewhere.
-    const layoutHandle = layoutEles.layout(layoutOpts);
-    cy.one('layoutstop', finishExpansion);
-    layoutHandle.run();
-  } catch {
-    // fcose may not be registered (tests with a stripped-down core); the
-    // elements are already at their seed positions so a failing layout is
-    // non-fatal.
-    finishExpansion();
+  const localNodes: LayoutNode[] = [];
+  const localEntries = new Set<string>();
+  for (const id of newIds) {
+    const cn = cy.$id(id);
+    if (cn.empty()) continue;
+    const isEntry = cn.data('is_entry') === true || cn.hasClass('entry');
+    localNodes.push({ id, isEntry });
+    if (isEntry) localEntries.add(id);
   }
+  const localEdges: LayoutEdge[] = [];
+  for (const edge of edges) {
+    if (!newIds.has(edge.source) || !newIds.has(edge.target)) continue;
+    if (edge.kind === 'contains') continue; // R5: hidden inside the compound
+    localEdges.push({ source: edge.source, target: edge.target });
+  }
+
+  // The compound parent's centre — children are laid out around it.
+  const seedCenter = seed;
+  const localCanvas = Math.max(600, 80 + localNodes.length * 60);
+  const localPositions = computeReachDepthPositions(
+    localNodes,
+    localEdges,
+    localEntries,
+    {
+      canvasWidth: localCanvas,
+      topPadding: 60,
+      layerGap: 70,
+      minNodeGap: 110,
+      deadRegion: { dx: 90, dy: 70 },
+    },
+  );
+  // Re-origin the local layout onto the seed centre so the cluster appears
+  // where the user clicked rather than at the synthetic origin.
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of localPositions.values()) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const localW = Number.isFinite(maxX - minX) ? maxX - minX : 0;
+  const localH = Number.isFinite(maxY - minY) ? maxY - minY : 0;
+  const dx = seedCenter.x - (minX + localW / 2);
+  const dy = seedCenter.y - (minY + localH / 2);
+
+  cy.batch(() => {
+    for (const id of newIds) {
+      const p = localPositions.get(id);
+      if (p === undefined) continue;
+      const cn = cy.$id(id);
+      if (cn.empty()) continue;
+      cn.position({ x: p.x + dx, y: p.y + dy });
+    }
+  });
   return newIds.size;
 }
 

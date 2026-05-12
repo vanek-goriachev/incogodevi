@@ -120,7 +120,7 @@ export const NODE_KIND_STYLES: Readonly<Record<NodeKind, NodeKindStyle>> = {
 
 /** Static palette of the six edge kinds (design.md §5.2). */
 export const EDGE_KIND_STYLES: Readonly<Record<EdgeKind, EdgeKindStyle>> = {
-  imports: { color: '#1e40af', width: 1.5, lineStyle: 'solid', arrow: 'triangle' },
+  imports: { color: '#1e40af', width: 1.8, lineStyle: 'solid', arrow: 'triangle' },
   contains: { color: '#94a3b8', width: 1, lineStyle: 'solid', arrow: 'none' },
   calls: { color: '#b45309', width: 1.5, lineStyle: 'solid', arrow: 'triangle' },
   embeds: { color: '#0369a1', width: 2, lineStyle: 'solid', arrow: 'triangle' },
@@ -300,6 +300,13 @@ export function buildStylesheet(theme: ThemeTokens): StylesheetStyle[] {
   });
 
   // ---- base edge styles ----
+  // Bug 2 fix (reach-depth PR): bumped `z-index` to 2 so edges paint above
+  // the dashed compound background fill (`z-index: 0` on `.pkg-compound`).
+  // Without this, cross-package imports edges traced over the package
+  // compound rectangles were rendered *behind* them and the user saw the
+  // inter-package dependencies vanish on first render even though the data
+  // was present (1838 edges in the live aggregated payload). `opacity: 0.85`
+  // is retained — the visibility issue was paint order, not contrast.
   sheet.push({
     selector: 'edge',
     style: {
@@ -307,6 +314,7 @@ export function buildStylesheet(theme: ThemeTokens): StylesheetStyle[] {
       'target-arrow-shape': 'triangle',
       'arrow-scale': 0.9,
       opacity: 0.85,
+      'z-index': 2,
     },
   });
 
