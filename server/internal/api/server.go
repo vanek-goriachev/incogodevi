@@ -151,6 +151,7 @@ func (s *Server) registerRoutes(staticFS fs.FS) {
 
 	s.mux.HandleFunc("POST /api/projects/{id}/analyze", s.handleAnalyze)
 	s.mux.HandleFunc("GET /api/projects/{id}/graph", s.handleGraph)
+	s.mux.HandleFunc("GET /api/projects/{id}/symbols", s.handleSymbols)
 	s.mux.HandleFunc("GET /api/projects/{id}/dead-code", s.handleDeadCode)
 
 	// Static SPA. Anything unmatched by /api/* falls through to the file

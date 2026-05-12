@@ -459,6 +459,8 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
               onDuplicate={handleEntryDuplicate}
               lastError={reanalyze.lastError}
               busy={isReanalyzing}
+              apiClient={apiClient}
+              projectId={projectId}
             />
             <FiltersPanel
               graph={effectiveGraph}

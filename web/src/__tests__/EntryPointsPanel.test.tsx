@@ -3,12 +3,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, type JSX } from 'react';
 
-import type { EntryPointSpec, Graph } from '../api/types';
-import { EntryPointsPanel } from '../pages/Main/panels/EntryPointsPanel';
+import type { EntryPointSpec, Graph, SymbolEntry } from '../api/types';
+import { EntryPointsPanel, type EntrySymbolSource } from '../pages/Main/panels/EntryPointsPanel';
 
 function defaultSpec(): EntryPointSpec {
   return {
@@ -125,10 +125,13 @@ describe('<EntryPointsPanel />', () => {
     const spy = vi.fn();
     render(<Harness onChangeSpy={spy} />);
     await userEvent.click(screen.getByTestId('entry-panel-add'));
-    const item = screen.getByTestId(
+    // Picker now requires typing before candidates appear (autocomplete UX).
+    const input = screen.getByTestId('entry-dialog-search') as HTMLInputElement;
+    await userEvent.type(input, 'Handler');
+    const item = await screen.findByTestId(
       'entry-dialog-pick-github.com/acme/api#Handler',
     );
-    await userEvent.click(item);
+    fireEvent.mouseDown(item);
     const last = spy.mock.calls[spy.mock.calls.length - 1]?.[0] as EntryPointSpec;
     expect(last.manual).toContain('github.com/acme/api#Handler');
     expect(last.mode).toBe('mixed');
@@ -249,5 +252,266 @@ describe('<EntryPointsPanel />', () => {
     fireEvent.mouseDown(backdrop, { target: backdrop });
     fireEvent.click(backdrop, { target: backdrop });
     expect(screen.queryByTestId('entry-dialog')).toBeNull();
+  });
+});
+
+/* ---------- Combobox / autocomplete picker tests (PR fixing the typo bug) ---------- */
+
+function symbolFixture(): SymbolEntry[] {
+  return [
+    // Same-named method `Run` on two different receivers — disambiguation
+    // depends on the per-row package label being rendered.
+    {
+      id: 'm:server-run',
+      name: 'Server.Run',
+      fqn: 'github.com/acme/internal/server#Server.Run',
+      kind: 'method',
+      package: 'github.com/acme/internal/server',
+    },
+    {
+      id: 'm:worker-run',
+      name: 'Worker.Run',
+      fqn: 'github.com/acme/internal/worker#Worker.Run',
+      kind: 'method',
+      package: 'github.com/acme/internal/worker',
+    },
+    // Free function — must appear with a name prefix-match against "run".
+    {
+      id: 'f:runonce',
+      name: 'runOnce',
+      fqn: 'github.com/acme/cmd/agent#runOnce',
+      kind: 'func',
+      package: 'github.com/acme/cmd/agent',
+    },
+    // Symbol inside a currently-collapsed package — the picker must still
+    // surface it (this is the whole point of the symbols endpoint).
+    {
+      id: 's:hiddensvc',
+      name: 'HiddenService',
+      fqn: 'github.com/acme/internal/collapsed#HiddenService',
+      kind: 'struct',
+      package: 'github.com/acme/internal/collapsed',
+    },
+  ];
+}
+
+function makePickerSource(symbols: SymbolEntry[]): EntrySymbolSource & {
+  calls: number;
+} {
+  const fake = {
+    calls: 0,
+    listSymbols(_projectId: string): Promise<SymbolEntry[]> {
+      this.calls += 1;
+      return Promise.resolve(symbols);
+    },
+  };
+  return fake;
+}
+
+function renderPickerHarness(opts: {
+  initialManual?: string[];
+  symbols?: SymbolEntry[];
+  onChangeSpy?: (next: EntryPointSpec) => void;
+}): EntrySymbolSource & { calls: number } {
+  const symbols = opts.symbols ?? symbolFixture();
+  const source = makePickerSource(symbols);
+
+  function PickerHarness(): JSX.Element {
+    const [spec, setSpec] = useState<EntryPointSpec>({
+      mode: 'auto',
+      auto_kinds: ['main'],
+      manual: opts.initialManual ?? [],
+      interface_impl: [],
+    });
+    return (
+      <EntryPointsPanel
+        graph={null}
+        value={spec}
+        onChange={(next) => {
+          setSpec(next);
+          opts.onChangeSpy?.(next);
+        }}
+        apiClient={source}
+        projectId="proj-1"
+      />
+    );
+  }
+
+  render(<PickerHarness />);
+  return source;
+}
+
+describe('<EntryPointsPanel /> picker combobox', () => {
+  it('shows the empty-state hint when the dialog opens with no query', async () => {
+    renderPickerHarness({});
+    await userEvent.click(screen.getByTestId('entry-panel-add'));
+    // Wait for the symbols-load effect to settle so the empty-input branch
+    // renders the listbox in its loaded form.
+    await waitFor(() => {
+      expect(screen.getByTestId('entry-dialog-search')).toBeInTheDocument();
+    });
+    // With empty query, the listbox shows the prompt placeholder hint.
+    expect(screen.getByTestId('entry-dialog-no-match')).toHaveTextContent(
+      'Начните вводить',
+    );
+  });
+
+  it('ranks substring and prefix matches case-insensitively', async () => {
+    renderPickerHarness({});
+    await userEvent.click(screen.getByTestId('entry-panel-add'));
+    const input = screen.getByTestId('entry-dialog-search') as HTMLInputElement;
+    await userEvent.type(input, 'run');
+    // All three Run-related rows are surfaced; the receiver-aware name is
+    // shown (`Server.Run`, `Worker.Run`) so methods are distinguishable.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(
+          'entry-dialog-pick-github.com/acme/internal/server#Server.Run',
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByTestId(
+        'entry-dialog-pick-github.com/acme/internal/worker#Worker.Run',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId('entry-dialog-pick-github.com/acme/cmd/agent#runOnce'),
+    ).toBeInTheDocument();
+    // No spurious matches — the unrelated struct must not appear.
+    expect(
+      screen.queryByTestId(
+        'entry-dialog-pick-github.com/acme/internal/collapsed#HiddenService',
+      ),
+    ).toBeNull();
+  });
+
+  it('commits the canonical FQN when the user picks via mouse', async () => {
+    const spy = vi.fn();
+    renderPickerHarness({ onChangeSpy: spy });
+    await userEvent.click(screen.getByTestId('entry-panel-add'));
+    const input = screen.getByTestId('entry-dialog-search') as HTMLInputElement;
+    await userEvent.type(input, 'Worker.Run');
+    const option = await screen.findByTestId(
+      'entry-dialog-pick-github.com/acme/internal/worker#Worker.Run',
+    );
+    // mousedown commit path — also covers the popover-stability concern by
+    // never letting the click bubble to the backdrop.
+    fireEvent.mouseDown(option);
+    const last = spy.mock.calls[spy.mock.calls.length - 1]?.[0] as EntryPointSpec;
+    expect(last.manual).toContain(
+      'github.com/acme/internal/worker#Worker.Run',
+    );
+  });
+
+  it('moves the highlight with ArrowDown and commits via Enter', async () => {
+    const spy = vi.fn();
+    renderPickerHarness({ onChangeSpy: spy });
+    await userEvent.click(screen.getByTestId('entry-panel-add'));
+    const input = screen.getByTestId('entry-dialog-search') as HTMLInputElement;
+    await userEvent.type(input, 'run');
+    // Wait until the ranked list is populated.
+    await screen.findByTestId(
+      'entry-dialog-pick-github.com/acme/internal/server#Server.Run',
+    );
+    // The first ranked candidate is at index 0; ArrowDown moves to index 1.
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    const last = spy.mock.calls[spy.mock.calls.length - 1]?.[0] as EntryPointSpec;
+    expect(last.manual.length).toBe(1);
+    // The committed value is a canonical loader FQN — the regex test below
+    // is a structural guard that we never emit a bare method name.
+    expect(last.manual[0]).toMatch(/#[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/);
+  });
+
+  it('closes the dialog without committing on Escape', async () => {
+    const spy = vi.fn();
+    renderPickerHarness({ onChangeSpy: spy });
+    await userEvent.click(screen.getByTestId('entry-panel-add'));
+    const input = screen.getByTestId('entry-dialog-search') as HTMLInputElement;
+    await userEvent.type(input, 'run');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('entry-dialog')).toBeNull();
+    // No onChange invocation for an Escape close.
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('shows "Ничего не найдено" when the query matches nothing', async () => {
+    renderPickerHarness({});
+    await userEvent.click(screen.getByTestId('entry-panel-add'));
+    const input = screen.getByTestId('entry-dialog-search') as HTMLInputElement;
+    await userEvent.type(input, 'zzzz-impossible-zzzz');
+    await waitFor(() => {
+      expect(screen.getByTestId('entry-dialog-no-match')).toHaveTextContent(
+        'Ничего не найдено',
+      );
+    });
+  });
+
+  it('surfaces symbols inside currently-collapsed packages', async () => {
+    renderPickerHarness({});
+    await userEvent.click(screen.getByTestId('entry-panel-add'));
+    const input = screen.getByTestId('entry-dialog-search') as HTMLInputElement;
+    // Type a substring that only the collapsed-package symbol matches.
+    await userEvent.type(input, 'Hidden');
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(
+          'entry-dialog-pick-github.com/acme/internal/collapsed#HiddenService',
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('clicking a dropdown option keeps the surrounding popover open until commit', async () => {
+    // Regression guard for PR #49's popover-dismissal fix: the dropdown
+    // option uses mousedown semantics so the backdrop never sees a stray
+    // click between item-pointerdown and the onSubmit close.
+    const spy = vi.fn();
+    renderPickerHarness({ onChangeSpy: spy });
+    await userEvent.click(screen.getByTestId('entry-panel-add'));
+    const input = screen.getByTestId('entry-dialog-search') as HTMLInputElement;
+    await userEvent.type(input, 'Server.Run');
+    const option = await screen.findByTestId(
+      'entry-dialog-pick-github.com/acme/internal/server#Server.Run',
+    );
+    // The dialog is still mounted at this point.
+    expect(screen.getByTestId('entry-dialog')).toBeInTheDocument();
+    fireEvent.mouseDown(option);
+    // After commit the parent closes the dialog as part of onChange — the
+    // important assertion is that we got a SINGLE commit, not a dismissal.
+    expect(spy).toHaveBeenCalledTimes(1);
+    const last = spy.mock.calls[0]?.[0] as EntryPointSpec;
+    expect(last.manual).toContain(
+      'github.com/acme/internal/server#Server.Run',
+    );
+  });
+
+  it('does not impose its own cap on the entry list — pin overflow stays with GraphCanvas', async () => {
+    // The picker exposes at most DEFAULT_PICKER_LIMIT (10) DROPDOWN rows,
+    // but adding a 13th manual entry must still succeed at the spec level —
+    // GraphCanvas's onPinOverflow toast is the only gate (ENTRY_PIN_LIMIT).
+    const spy = vi.fn();
+    const initialManual = Array.from({ length: 12 }, (_, i) => `pkg/p${String(i)}#Fn`);
+    const extraSymbol: SymbolEntry = {
+      id: 'extra',
+      name: 'ExtraEntry',
+      fqn: 'pkg/extra#ExtraEntry',
+      kind: 'func',
+      package: 'pkg/extra',
+    };
+    renderPickerHarness({
+      initialManual,
+      symbols: [extraSymbol],
+      onChangeSpy: spy,
+    });
+    await userEvent.click(screen.getByTestId('entry-panel-add'));
+    const input = screen.getByTestId('entry-dialog-search') as HTMLInputElement;
+    await userEvent.type(input, 'Extra');
+    const opt = await screen.findByTestId('entry-dialog-pick-pkg/extra#ExtraEntry');
+    fireEvent.mouseDown(opt);
+    const last = spy.mock.calls[spy.mock.calls.length - 1]?.[0] as EntryPointSpec;
+    expect(last.manual.length).toBe(13);
+    expect(last.manual).toContain('pkg/extra#ExtraEntry');
   });
 });

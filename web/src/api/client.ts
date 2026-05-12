@@ -20,6 +20,8 @@ import type {
   PhaseEvent,
   ProjectMeta,
   SSEEventType,
+  SymbolEntry,
+  SymbolsResponse,
   WarningEvent,
 } from './types';
 
@@ -98,6 +100,13 @@ export class ApiClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly xhrFactory: () => XMLHttpRequest;
+  /**
+   * Per-project symbol-list cache. Symbol catalogues are immutable for the
+   * lifetime of a project (a re-upload yields a fresh project_id), so a
+   * single fetch per project per browser session is sufficient — the picker
+   * dropdown opens instantly after the first request.
+   */
+  private readonly symbolsCache: Map<string, Promise<SymbolEntry[]>> = new Map();
 
   constructor(options: ApiClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? defaultBaseUrl()).replace(/\/+$/, '');
@@ -241,6 +250,30 @@ export class ApiClient {
       return (await response.json()) as DeadCodeReport;
     }
     return await response.text();
+  }
+
+  /**
+   * `GET /api/projects/{id}/symbols` — flat catalogue of every func/method/
+   * struct/interface the loader can resolve, with the canonical FQN
+   * pre-computed by the server. Used by the entry-point picker combobox.
+   *
+   * Caches per project id so the dropdown opens instantly on subsequent
+   * focuses. Failures evict the cache entry so the next call retries.
+   */
+  async listSymbols(projectId: string): Promise<SymbolEntry[]> {
+    const cached = this.symbolsCache.get(projectId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const path = `/api/projects/${encodeURIComponent(projectId)}/symbols`;
+    const promise = this.requestJson<SymbolsResponse>('GET', path)
+      .then((resp) => resp.symbols)
+      .catch((err: unknown) => {
+        this.symbolsCache.delete(projectId);
+        throw err;
+      });
+    this.symbolsCache.set(projectId, promise);
+    return promise;
   }
 
   /** `DELETE /api/projects/{id}` — idempotent removal. */
