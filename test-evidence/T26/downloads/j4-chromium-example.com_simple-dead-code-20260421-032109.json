@@ -1,0 +1,43 @@
+{
+  "project_id": "pfmehOq4amgWjrjxd9sdlg",
+  "generated_at": "2026-04-21T00:21:09.157361959Z",
+  "entries_count": 4,
+  "entries": [
+    {
+      "kind": "func",
+      "fqn": "example.com/simple/internal/dead.LegacyAdder",
+      "package": "example.com/simple/internal/dead",
+      "name": "LegacyAdder",
+      "file": "/tmp/go-viz/sources/pfmehOq4amgWjrjxd9sdlg/internal/dead/dead.go",
+      "line": 7,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "func",
+      "fqn": "example.com/simple/internal/dead.LegacyMultiplier",
+      "package": "example.com/simple/internal/dead",
+      "name": "LegacyMultiplier",
+      "file": "/tmp/go-viz/sources/pfmehOq4amgWjrjxd9sdlg/internal/dead/dead.go",
+      "line": 13,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "const",
+      "fqn": "example.com/simple/internal/dead.UnusedConst",
+      "package": "example.com/simple/internal/dead",
+      "name": "UnusedConst",
+      "file": "/tmp/go-viz/sources/pfmehOq4amgWjrjxd9sdlg/internal/dead/dead.go",
+      "line": 18,
+      "reason": "unreachable"
+    },
+    {
+      "kind": "func",
+      "fqn": "example.com/simple/internal/util.FormatBanner",
+      "package": "example.com/simple/internal/util",
+      "name": "FormatBanner",
+      "file": "/tmp/go-viz/sources/pfmehOq4amgWjrjxd9sdlg/internal/util/util.go",
+      "line": 13,
+      "reason": "unreachable"
+    }
+  ]
+}

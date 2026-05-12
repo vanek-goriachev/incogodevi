@@ -1,0 +1,227 @@
+{
+  "config": {
+    "configFile": "/Users/isegoryachev/Desktop/University/course_project/code_v2/project/e2e/playwright.config.ts",
+    "rootDir": "/Users/isegoryachev/Desktop/University/course_project/code_v2/project/e2e/specs",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": "/Users/isegoryachev/Desktop/University/course_project/code_v2/project/e2e/global-setup.ts",
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/isegoryachev/Desktop/University/course_project/code_v2/project/test-evidence/T26/playwright-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/Users/isegoryachev/Desktop/University/course_project/code_v2/project/e2e/specs",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 120000
+      },
+      {
+        "outputDir": "/Users/isegoryachev/Desktop/University/course_project/code_v2/project/test-evidence/T26/playwright-output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "webkit",
+        "name": "webkit",
+        "testDir": "/Users/isegoryachev/Desktop/University/course_project/code_v2/project/e2e/specs",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 120000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "html",
+        {
+          "outputFolder": "/Users/isegoryachev/Desktop/University/course_project/code_v2/project/test-evidence/T26/html-report",
+          "open": "never"
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "/Users/isegoryachev/Desktop/University/course_project/code_v2/project/test-evidence/T26/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.59.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "j1-first-upload.spec.ts",
+      "file": "j1-first-upload.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "J1 — first upload happy path",
+          "file": "j1-first-upload.spec.ts",
+          "line": 17,
+          "column": 6,
+          "specs": [
+            {
+              "title": "uploads simple fixture, reaches done, renders graph with dead-code",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5501,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "upload posted, waiting for analyzing screen\n"
+                        },
+                        {
+                          "text": "[browser:warning] You have set a custom wheel sensitivity.  This will make your app zoom unnaturally when using mainstream mice.  You should change this value from the default only if you can guarantee that all your users will use the same hardware and OS configuration as your current machine.\n"
+                        },
+                        {
+                          "text": "[browser:warning] The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid\n"
+                        },
+                        {
+                          "text": "[browser:warning] The style value of `label` is deprecated for `width`\n"
+                        },
+                        {
+                          "text": "[browser:warning] The style value of `label` is deprecated for `height`\n"
+                        },
+                        {
+                          "text": "[browser:warning] The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid\n"
+                        },
+                        {
+                          "text": "[browser:warning] The style property `font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace` is invalid\n"
+                        },
+                        {
+                          "text": "analysis done, waiting for graph ready\n"
+                        },
+                        {
+                          "text": "graph ready\n"
+                        },
+                        {
+                          "text": "stats: {\"nodes\":64,\"edges\":233,\"reachable\":56,\"dead\":8}\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-21T17:51:15.272Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "112baf090a2688fb173a-69bfaf351df6d5118c92",
+              "file": "j1-first-upload.spec.ts",
+              "line": 18,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "j3-reload-restore.spec.ts",
+      "file": "j3-reload-restore.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "J3 — reload restores graph and positions",
+          "file": "j3-reload-restore.spec.ts",
+          "line": 26,
+          "column": 6,
+          "specs": [
+            {
+              "title": "positions in localStorage survive a full reload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 120000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6917,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-04-21T17:51:20.911Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "33a38ef86fbd75efa9d7-79506114cee5a3658fe2",
+              "file": "j3-reload-restore.spec.ts",
+              "line": 27,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-04-21T17:51:14.659Z",
+    "duration": 13215.689999999999,
+    "expected": 2,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

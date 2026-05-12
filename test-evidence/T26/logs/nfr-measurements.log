@@ -22,3 +22,12 @@
 2026-04-20T08:54:20.709Z NFR-02 webkit elapsed_ms=372
 2026-04-20T08:54:38.724Z NFR-03 webkit samples_ms=[92,95,69,96,85] median_ms=92 max_ms=96
 2026-04-20T08:54:56.202Z NFR-09 webkit recovered=true
+2026-04-21T00:21:16.158Z NFR-01 chromium fixture=medium elapsed_ms=6039
+2026-04-21T00:21:21.464Z NFR-02 chromium elapsed_ms=67
+2026-04-21T00:21:27.436Z NFR-03 chromium samples_ms=[107,62,118,146,104] median_ms=107 max_ms=146
+2026-04-21T00:21:35.025Z NFR-09 chromium recovered=true
+2026-04-21T00:22:12.840Z NFR-02 chromium elapsed_ms=508
+2026-04-21T00:22:19.094Z NFR-03 chromium samples_ms=[121,142,112,138,112] median_ms=121 max_ms=142
+2026-04-21T00:22:26.307Z NFR-09 chromium recovered=true
+2026-04-21T00:22:44.546Z NFR-03 chromium samples_ms=[144,160,100,52,114] median_ms=114 max_ms=160
+2026-04-21T00:38:43.193Z NFR-03 chromium samples_ms=[120,132,114,135,113] median_ms=120 max_ms=135
