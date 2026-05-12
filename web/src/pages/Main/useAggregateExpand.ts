@@ -30,8 +30,25 @@ import { ApiError } from '../../api/client';
 import type { Edge, Node } from '../../api/types';
 import { layoutOptionsFor } from './GraphCanvas';
 
-/** Maximum number of packages allowed to be expanded at once (NFR-03). */
-export const EXPAND_LIMIT = 3;
+/**
+ * No hard cap on the number of simultaneously expanded packages.
+ *
+ * Historically this module exported `EXPAND_LIMIT = 3` and rejected the 4th
+ * expansion with an info toast in service of NFR-03 ("interface response
+ * < 100 ms per user action"). That cap was a stand-in for a perf budget the
+ * old code could not actually meet: pre-R8 every expansion ran a global
+ * `quality:'proof'` fcose over the whole canvas, so the 4th click compounded
+ * onto an already-busy graph.
+ *
+ * R8 (PR #44) rewrote the expansion path to a *scoped local layout* — only
+ * the newly added sub-graph is relaxed; surrounding still-aggregated nodes
+ * stay put. With that change in place the Nth expand has the same cost
+ * profile as the 1st, and the server enforces no simultaneous-scope cap
+ * (each `level=struct` request is independent). Keeping a client-side
+ * threshold here would block a legitimate workflow (comparing 4+ packages
+ * side-by-side) without protecting anything real. If a regression ever
+ * re-introduces a global relayout, fix it at the source rather than here.
+ */
 
 export interface UseAggregateExpandOptions {
   apiClient: ApiClient;
@@ -53,8 +70,11 @@ export interface UseAggregateExpandOptions {
    */
   onError?: (message: string) => void;
   /**
-   * Surface a non-blocking informational toast (e.g. "limit reached"). When
-   * omitted the hook stays silent.
+   * Surface a non-blocking informational toast. Currently unused — the hook
+   * has no states that warrant a soft info message (the historic
+   * "expand limit reached" toast was removed alongside the cap). Kept in the
+   * options shape so callers can wire a toast surface up-front without churn
+   * the next time the hook needs one.
    */
   onInfo?: (message: string) => void;
   /**
@@ -117,7 +137,6 @@ export function useAggregateExpand(
     aggregation,
     reducedMotion,
     onError,
-    onInfo,
   } = options;
 
   const [expandedPackages, setExpandedPackages] = useState<Set<string>>(
@@ -158,12 +177,6 @@ export function useAggregateExpand(
         return;
       }
       if (expandedRef.current.has(packagePath) || inFlightRef.current.has(packagePath)) {
-        return;
-      }
-      if (expandedRef.current.size >= EXPAND_LIMIT) {
-        if (onInfo !== undefined) {
-          onInfo(`Already expanded ${String(EXPAND_LIMIT)} packages; collapse one to expand another.`);
-        }
         return;
       }
       inFlightRef.current.add(packagePath);
@@ -211,7 +224,6 @@ export function useAggregateExpand(
       aggregation,
       reducedMotion,
       onError,
-      onInfo,
     ],
   );
 
