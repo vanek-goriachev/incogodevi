@@ -41,6 +41,7 @@ import {
 
 import type { Edge, Graph, Node } from '../../api/types';
 import { buildStylesheet, type ThemeTokens } from './graph-styles';
+import { computePackageTreePositions } from './layout/packageTree';
 import { Tooltip, type TooltipPayload } from './Tooltip';
 import { usePositionsStorage, type PositionMap } from './usePositionsStorage';
 
@@ -357,13 +358,11 @@ export function GraphCanvas({
         cy.center();
       }
     });
-    // R11: restrict the layout to currently visible nodes+edges so
-    // `hideExternal` filtered-out packages don't act as invisible repulsion
-    // sources that collapse the internal cluster into the middle.
-    const eles = visibleEles(cy);
-    const opts = layoutOptionsFor('relayout-button', graph, reducedMotion);
-    (opts as unknown as { eles: unknown }).eles = eles;
-    eles.layout(opts).run();
+    // R12: Relayout re-applies the deterministic package-tree positions
+    // (same input → same pixels). No force pass over the disturbed canvas,
+    // so pressing the button repeatedly is idempotent.
+    applyPackageTreePositions(cy);
+    cy.layout({ name: 'preset', animate: false } as LayoutOptions).run();
   }, [layoutTrigger, graph, positions, reducedMotion]);
 
   // ---- interaction effect: tap, drag-end, hover ----
@@ -637,7 +636,18 @@ function visibleEles(cy: Core): ReturnType<Core['collection']> {
   });
 }
 
-/** Run the appropriate Cytoscape layout for the current graph snapshot. */
+/**
+ * Apply the deterministic package-tree layout to `cy`.
+ *
+ * R12: the canvas-wide force-directed pass (fcose / cola) was non-idempotent
+ * — pressing the Relayout button on an already-spread canvas re-ran the
+ * simulation from the disturbed state, monotonically widening the bounding
+ * box ("размазывает"). We replace that pass with a pure tidy-tree layout
+ * derived from `node.data('package')`, applied via Cytoscape's `preset`
+ * layout. Identical package set → identical pixels. Per-package compound
+ * children remain laid out by the scoped fcose pass in
+ * `useAggregateExpand.applyExpansion` (R8 invariant).
+ */
 function runLayout(
   cy: Core,
   graph: Graph,
@@ -650,35 +660,54 @@ function runLayout(
     return;
   }
 
-  // Always start from a fully unlocked state — fcose moves every node it sees
-  // and any leftover lock from a previous entry-row pin would freeze nodes
-  // in the wrong place.
+  // Drop any leftover locks from previous entry-row pins or interactions.
   cy.batch(() => {
     cy.nodes().forEach((n) => {
       n.unlock();
     });
   });
 
-  // R7: switch the canvas-wide layout to fcose with explicit "spread"
-  // tuning. Real-world Go projects (Xray-core et al.) settled into a tall
-  // narrow column with cola's force model after a few package expansions
-  // because the chains of internal contains/imports edges acted as
-  // attractors with no horizontal counter-force. fcose's combination of
-  // `packComponents`, larger `nodeRepulsion`, longer `idealEdgeLength` and
-  // explicit `gravity`/`gravityRange` produces a balanced 2-D fan-out
-  // instead of a vertical lens.
-  //
-  // The expansion code path in `useAggregateExpand.ts` uses R5+R8's compact
-  // settings — that layout runs only over the children of one compound and
-  // must keep the compound bounding box small (R5 spec asserts < ½ viewport)
-  // AND return in under 2 s so the double-click feels responsive (R8 Task A).
-  //
-  // R11: scope the layout to the visible subset so filter-hidden nodes
-  // (hideExternal by default) don't weigh on the force simulation.
-  const eles = visibleEles(cy);
-  const opts = layoutOptionsFor('initial', graph, reducedMotion);
-  (opts as unknown as { eles: unknown }).eles = eles;
-  eles.layout(opts).run();
+  applyPackageTreePositions(cy);
+  void reducedMotion;
+  cy.layout({ name: 'preset', animate: false } as LayoutOptions).run();
+}
+
+/**
+ * Walk every top-level (non-compound-child) node, derive a deterministic
+ * (x, y) from its package path, and write it directly. Compound children
+ * (member nodes inside an expanded package) keep their pre-existing position
+ * — `useAggregateExpand.applyExpansion` owns those via its scoped fcose pass.
+ */
+function applyPackageTreePositions(cy: Core): void {
+  const pkgPaths = new Set<string>();
+  cy.nodes().forEach((n) => {
+    // Children of an expanded compound parent inherit their parent's frame;
+    // their positions are computed locally by the expansion path.
+    if (n.isChild() && n.parent().length > 0) {
+      return;
+    }
+    const pkg = n.data('package');
+    if (typeof pkg === 'string' && pkg.length > 0) {
+      pkgPaths.add(pkg);
+    }
+  });
+  const positions = computePackageTreePositions(Array.from(pkgPaths));
+  cy.batch(() => {
+    cy.nodes().forEach((n) => {
+      if (n.isChild() && n.parent().length > 0) {
+        return;
+      }
+      const pkg = n.data('package');
+      if (typeof pkg !== 'string') {
+        return;
+      }
+      const p = positions.get(pkg);
+      if (p === undefined) {
+        return;
+      }
+      n.position({ x: p.x, y: p.y });
+    });
+  });
 }
 
 /** Scope passed to `runLayout` helpers. Mirrors `layoutOptionsFor`. */
