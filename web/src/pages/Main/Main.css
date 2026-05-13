@@ -25,10 +25,28 @@
   height: 100%;
 }
 
+.main-view .layout__main {
+  padding: 0;
+  overflow: hidden;
+}
+
 .main-view__top-bar {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.main-view__main-area {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.main-view__canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
 }
 
 .dead-mode-switcher {

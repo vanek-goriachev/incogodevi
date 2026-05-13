@@ -16,6 +16,7 @@ export type ProjectScopedField =
   | 'filters'
   | 'positions'
   | 'layout'
+  | 'layer-editor'
   | 'dead-mode'
   | 'collapsed'
   | 'expanded-packages';

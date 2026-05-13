@@ -41,11 +41,17 @@ import {
 
 import type { Edge, Graph, Node } from '../../api/types';
 import { buildStylesheet, type ThemeTokens } from './graph-styles';
+import { defaultLayerEditorState, type LayerEditorState } from './layout/laneMapping';
 import {
   computeReachDepthPositions,
   type LayoutEdge,
   type LayoutNode,
 } from './layout/reachDepth';
+import {
+  computeSlotPositions,
+  type SlotLayoutEdge,
+  type SlotLayoutNode,
+} from './layout/slotLayout';
 import { Tooltip, type TooltipPayload } from './Tooltip';
 import { usePositionsStorage, type PositionMap } from './usePositionsStorage';
 
@@ -117,6 +123,15 @@ export interface GraphCanvasProps {
    * actual entry count so the message can quote it.
    */
   onPinOverflow?: (entryCount: number, limit: number) => void;
+  /**
+   * Optional Layer Editor state. When provided, the canvas-wide positioner
+   * runs the slot-based layout (`computeSlotPositions`) instead of the
+   * default reach-depth one. Each BFS-depth layer is honoured according to
+   * the user's slot/lane arrangement; folder-groups pull their packages out
+   * of their BFS lane. When omitted, layout falls back to the legacy
+   * positioner so existing tests + screenshots keep their behaviour.
+   */
+  layerEditorState?: LayerEditorState;
 }
 
 /**
@@ -135,6 +150,7 @@ export function GraphCanvas({
   onCyReady,
   layoutTrigger = 0,
   onPinOverflow,
+  layerEditorState,
 }: GraphCanvasProps): JSX.Element {
   ensureLayoutsRegistered();
 
@@ -143,6 +159,10 @@ export function GraphCanvas({
   const positions = usePositionsStorage(projectId);
   const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tooltip, setTooltip] = useState<TooltipPayload | null>(null);
+  // Keep the latest layer editor state in a ref so positioner helpers (defined
+  // outside the closure) can read it without depending on render-stability.
+  const layerStateRef = useRef<LayerEditorState | undefined>(layerEditorState);
+  layerStateRef.current = layerEditorState;
   // Set the moment the user grabs or drops a node. Subsequent automatic
   // `layoutstop` snapshots skip the write so a manual drop is never
   // clobbered by the trailing layout animation (FR-26).
@@ -321,10 +341,45 @@ export function GraphCanvas({
         if (cyRef.current !== cy) {
           return;
         }
-        runLayout(cy, graph, persisted, reducedMotion);
+        runLayout(cy, graph, persisted, reducedMotion, layerStateRef.current);
       });
     }
   }, [graph, positions, reducedMotion]);
+
+  // ---- layer-editor effect: when the editor state changes, re-apply the
+  // canvas-wide slot positions in place. We deliberately skip the initial
+  // mount so the very first paint goes through the regular graph effect (which
+  // runs runLayout with the same state via the ref) — re-running here would
+  // be a redundant write.
+  const layerSeenRef = useRef<LayerEditorState | undefined>(layerEditorState);
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (cy === null || graph === null || graph.nodes.length === 0) {
+      layerSeenRef.current = layerEditorState;
+      return;
+    }
+    if (layerSeenRef.current === layerEditorState) {
+      return;
+    }
+    layerSeenRef.current = layerEditorState;
+    if (layerEditorState === undefined) {
+      return;
+    }
+    cy.batch(() => {
+      cy.nodes().forEach((n) => {
+        n.unlock();
+      });
+    });
+    applyReachDepthPositions(cy, layerEditorState);
+    cy.layout({ name: 'preset', animate: false } as LayoutOptions).run();
+    // Persist the new positions so a reload doesn't flicker.
+    const snap: PositionMap = {};
+    cy.nodes().forEach((n) => {
+      const p = n.position();
+      snap[n.id()] = { x: p.x, y: p.y };
+    });
+    positions.write(snap);
+  }, [layerEditorState, graph, positions]);
 
   // ---- relayout effect: re-run the initial layout when the parent bumps
   // `layoutTrigger`. The skip-on-mount guard prevents a redundant layout
@@ -363,9 +418,9 @@ export function GraphCanvas({
       }
     });
     // Reach-depth: Relayout re-applies positions derived from BFS distance
-    // from entry-points + barycenter intra-layer ordering. Same input →
-    // same pixels, so pressing the button is idempotent to ≤1 px.
-    applyReachDepthPositions(cy);
+    // from entry-points + barycenter intra-layer ordering. R12: if a
+    // LayerEditorState is in play, slot-based positions take over.
+    applyReachDepthPositions(cy, layerStateRef.current);
     cy.layout({ name: 'preset', animate: false } as LayoutOptions).run();
   }, [layoutTrigger, graph, positions, reducedMotion]);
 
@@ -657,6 +712,7 @@ function runLayout(
   graph: Graph,
   persisted: PositionMap,
   reducedMotion: boolean,
+  layerState?: LayerEditorState,
 ): void {
   const allPersisted = graph.nodes.every((n) => persisted[n.id] !== undefined);
   if (allPersisted && graph.nodes.length > 0) {
@@ -671,7 +727,7 @@ function runLayout(
     });
   });
 
-  applyReachDepthPositions(cy);
+  applyReachDepthPositions(cy, layerState);
   void reducedMotion;
   cy.layout({ name: 'preset', animate: false } as LayoutOptions).run();
 }
@@ -685,11 +741,16 @@ function runLayout(
  * pre-existing position — `useAggregateExpand.applyExpansion` owns those via
  * its scoped reach-depth pass.
  *
- * Determinism: identical `cy` topology + entry set ⇒ identical positions.
- * That is what makes the Re-layout button idempotent to ≤1 px.
+ * R12: when a `LayerEditorState` is supplied, this function dispatches to
+ * `computeSlotPositions` so the user's slot/lane arrangement drives the
+ * layout. Without state it falls back to the original BFS-depth positioner.
+ *
+ * Determinism: identical `cy` topology + entry set + state ⇒ identical
+ * positions. Idempotence to ≤1 px is preserved across both paths.
  */
-function applyReachDepthPositions(cy: Core): void {
-  const nodes: LayoutNode[] = [];
+function applyReachDepthPositions(cy: Core, layerState?: LayerEditorState): void {
+  const slotNodes: SlotLayoutNode[] = [];
+  const legacyNodes: LayoutNode[] = [];
   const entryIds = new Set<string>();
   cy.nodes().forEach((n) => {
     if (n.isChild() && n.parent().length > 0) {
@@ -697,15 +758,17 @@ function applyReachDepthPositions(cy: Core): void {
     }
     const id = n.id();
     const isEntry = n.data('is_entry') === true || n.hasClass('entry');
-    // Pass live `outerWidth()` / `outerHeight()` so the positioner can
-    // space wide compound parents (expanded packages) far enough apart
-    // that their bounding boxes do not overlap on Relayout. The L→R
-    // orientation makes height the primary spacing concern (intra-column
-    // adjacency) and width the secondary one (inter-sub-column spread
-    // when a layer wraps).
     const w = Number.isFinite(n.outerWidth()) ? n.outerWidth() : undefined;
     const h = Number.isFinite(n.outerHeight()) ? n.outerHeight() : undefined;
-    nodes.push({
+    const pkg = String(n.data('package') ?? '');
+    slotNodes.push({
+      id,
+      package: pkg,
+      isEntry,
+      ...(w !== undefined ? { width: w } : {}),
+      ...(h !== undefined ? { height: h } : {}),
+    });
+    legacyNodes.push({
       id,
       isEntry,
       ...(w !== undefined ? { width: w } : {}),
@@ -715,40 +778,48 @@ function applyReachDepthPositions(cy: Core): void {
       entryIds.add(id);
     }
   });
-  const edges: LayoutEdge[] = [];
+  const slotEdges: SlotLayoutEdge[] = [];
+  const legacyEdges: LayoutEdge[] = [];
   cy.edges().forEach((e) => {
     const src = e.source();
     const tgt = e.target();
     if (src.empty() || tgt.empty()) {
       return;
     }
-    // Skip edges that belong inside an expanded compound — those are local
-    // to the per-package layout pass and would otherwise drag the package's
-    // children into the canvas-wide layer assignment.
     if (src.isChild() && src.parent().length > 0) return;
     if (tgt.isChild() && tgt.parent().length > 0) return;
-    edges.push({ source: src.id(), target: tgt.id() });
+    slotEdges.push({ source: src.id(), target: tgt.id() });
+    legacyEdges.push({ source: src.id(), target: tgt.id() });
   });
 
-  // PR #54: cap the canvas-wide layer column height at a readable multiple
-  // of the viewport so dense layers (~60 packages on Xray-core) wrap into
-  // multiple sub-columns instead of stretching to a 15 000 px ribbon. The
-  // positioner will use `maxNodesPerColumn` to decide where to wrap; the
-  // canvas budget here only scales the vertical centering.
   const canvasHeight = Math.max(1200, (cy.height() || 900) * 2.5);
-  const positions = computeReachDepthPositions(nodes, edges, entryIds, {
-    canvasHeight,
-    topPadding: 80,
-    layerGap: 360,
-    minNodeGap: 110,
-    // Wrap once we hit ~14 nodes per sub-column — keeps each sub-column
-    // shorter than ~1 540 px (14 * 110) so the resulting canvas fits
-    // inside the zoom-capped fit window on a 900-px-tall viewport.
-    maxNodesPerColumn: 14,
-    columnGap: 160,
-    nodeBuffer: 40,
-    deadRegion: { dx: 0, dy: 240 },
-  });
+
+  let positions: Map<string, { x: number; y: number }>;
+  if (layerState !== undefined) {
+    const result = computeSlotPositions(slotNodes, slotEdges, entryIds, layerState, {
+      canvasHeight,
+      topPadding: 80,
+      layerGap: 360,
+      minNodeGap: 110,
+      maxNodesPerColumn: 14,
+      columnGap: 160,
+      nodeBuffer: 40,
+      deadRegion: { dx: 0, dy: 240 },
+    });
+    positions = result.positions;
+  } else {
+    positions = computeReachDepthPositions(legacyNodes, legacyEdges, entryIds, {
+      canvasHeight,
+      topPadding: 80,
+      layerGap: 360,
+      minNodeGap: 110,
+      maxNodesPerColumn: 14,
+      columnGap: 160,
+      nodeBuffer: 40,
+      deadRegion: { dx: 0, dy: 240 },
+    });
+  }
+
   cy.batch(() => {
     cy.nodes().forEach((n) => {
       if (n.isChild() && n.parent().length > 0) {
@@ -766,6 +837,9 @@ function applyReachDepthPositions(cy: Core): void {
 // Exported for tests; intentional named re-export so the test harness does
 // not need to plumb through Cytoscape just to verify the adapter wiring.
 export { applyReachDepthPositions };
+// Re-export so a future caller can supply a default state from outside the
+// canvas file without re-importing the layout module.
+export { defaultLayerEditorState };
 
 /** Scope passed to `runLayout` helpers. Mirrors `layoutOptionsFor`. */
 type LayoutScope = 'initial' | 'relayout-button' | 'expansion';
