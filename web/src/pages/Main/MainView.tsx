@@ -50,10 +50,16 @@ import { DeadModeSwitcher } from './DeadModeSwitcher';
 import { GraphCanvas } from './GraphCanvas';
 import { readThemeTokens, type ThemeTokens } from './graph-styles';
 import { recomputeReachability } from './localReachability';
+import {
+  laneKeyOf,
+  resolveLanes,
+  type LaneInputNode,
+} from './layout/laneMapping';
 import { DeadCodePanel } from './panels/DeadCodePanel';
 import { EntryPointsPanel } from './panels/EntryPointsPanel';
 import { ExportPanel } from './panels/ExportPanel';
 import { FiltersPanel } from './panels/FiltersPanel';
+import { LayerEditorBar } from './panels/LayerEditorBar';
 import {
   defaultFilterSpec,
   normalizeFilterSpec,
@@ -66,6 +72,7 @@ import { useCollapse } from './useCollapse';
 import { useDeadMode } from './useDeadMode';
 import { applyFilters, useFilters } from './useFilters';
 import { useGraphData } from './useGraphData';
+import { useLayerEditorState } from './useLayerEditorState';
 import { usePositionsStorage } from './usePositionsStorage';
 import { useReanalyze } from './useReanalyze';
 import type { EntryPointSpec, Graph, Node } from '../../api/types';
@@ -202,6 +209,53 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
     positionsStore.clear();
     setLayoutTrigger((n) => n + 1);
   }, [positionsStore]);
+
+  // R12: BFS depths derived from the current graph + entry-point set. Drives
+  // the default layer-editor state and the chip counts on the editor bar.
+  const bfsResult = useMemo(() => {
+    if (state.graph === null) {
+      return { depths: new Map<string, number>(), packageByNode: new Map<string, string>() };
+    }
+    return computeGraphBfsDepths(state.graph);
+  }, [state.graph]);
+  const uniqueDepths = useMemo(
+    () => Array.from(new Set(Array.from(bfsResult.depths.values()).filter((d) => d >= 0))),
+    [bfsResult],
+  );
+  const layerEditor = useLayerEditorState({
+    projectId,
+    bfsDepths: uniqueDepths,
+  });
+  const laneInputs = useMemo<LaneInputNode[]>(() => {
+    const out: LaneInputNode[] = [];
+    for (const [id, pkg] of bfsResult.packageByNode.entries()) {
+      out.push({ id, package: pkg, depth: bfsResult.depths.get(id) });
+    }
+    return out;
+  }, [bfsResult]);
+  const laneResolution = useMemo(
+    () => resolveLanes(laneInputs, layerEditor.state),
+    [laneInputs, layerEditor.state],
+  );
+  const countsByLaneKey = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const [key, ids] of laneResolution.nodesByLaneKey.entries()) {
+      m.set(key, ids.length);
+    }
+    // Ensure every declared lane has at least a 0 entry so chips for empty
+    // lanes still render their count.
+    for (const slot of layerEditor.state.slots) {
+      for (const lane of slot.lanes) {
+        const k = laneKeyOf(lane);
+        if (!m.has(k)) m.set(k, 0);
+      }
+    }
+    for (const lane of layerEditor.state.unassigned) {
+      const k = laneKeyOf(lane);
+      if (!m.has(k)) m.set(k, 0);
+    }
+    return m;
+  }, [laneResolution, layerEditor.state]);
 
   const handleExpandError = useCallback(
     (message: string) => {
@@ -507,18 +561,33 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
           </div>
         }
       >
-        <GraphCanvas
-          graph={effectiveGraph}
-          theme={themeTokens}
-          projectId={projectId}
-          reducedMotion={reducedMotion}
-          loading={state.status === 'loading' || isReanalyzing}
-          onSelectNode={handleSelectNode}
-          selectedNodeId={selectedNodeId}
-          onCyReady={handleCyReady}
-          layoutTrigger={layoutTrigger}
-          onPinOverflow={handlePinOverflow}
-        />
+        <div className="main-view__main-area" data-testid="main-area">
+          <LayerEditorBar
+            state={layerEditor.state}
+            countsByLaneKey={countsByLaneKey}
+            nodeIdsByLaneKey={laneResolution.nodesByLaneKey}
+            onAddGroup={layerEditor.addGroup}
+            onRemoveGroup={layerEditor.removeGroup}
+            onMoveLane={layerEditor.moveLane}
+            onReset={layerEditor.reset}
+            cy={cy}
+          />
+          <div className="main-view__canvas-wrap">
+            <GraphCanvas
+              graph={effectiveGraph}
+              theme={themeTokens}
+              projectId={projectId}
+              reducedMotion={reducedMotion}
+              loading={state.status === 'loading' || isReanalyzing}
+              onSelectNode={handleSelectNode}
+              selectedNodeId={selectedNodeId}
+              onCyReady={handleCyReady}
+              layoutTrigger={layoutTrigger}
+              onPinOverflow={handlePinOverflow}
+              layerEditorState={layerEditor.state}
+            />
+          </div>
+        </div>
         <ContextMenu
           cy={cy}
           collapsedIds={collapse.collapsedIds}
@@ -590,6 +659,59 @@ function usePrefersReducedMotion(): boolean {
     };
   }, []);
   return reduced;
+}
+
+/**
+ * Per-node BFS depth (first-visit wins) plus a package lookup, derived
+ * purely from the React `Graph` snapshot. Used by the Layer Editor and by
+ * the editor-bar chip counters. The same BFS runs inside
+ * `computeReachDepthPositions` / `computeSlotPositions`; centralising it
+ * here avoids an extra pass on the layout-trigger code path.
+ *
+ * Aggregated views: when the snapshot is package-aggregated the `package`
+ * field on every node IS the package path, so the lane resolver still works
+ * unmodified.
+ */
+function computeGraphBfsDepths(graph: Graph): {
+  depths: Map<string, number>;
+  packageByNode: Map<string, string>;
+} {
+  const depths = new Map<string, number>();
+  const packageByNode = new Map<string, string>();
+  const adj = new Map<string, string[]>();
+  const ids = new Set<string>();
+  for (const n of graph.nodes) {
+    ids.add(n.id);
+    packageByNode.set(n.id, n.package ?? '');
+  }
+  for (const e of graph.edges) {
+    if (!ids.has(e.source) || !ids.has(e.target)) continue;
+    let bucket = adj.get(e.source);
+    if (bucket === undefined) {
+      bucket = [];
+      adj.set(e.source, bucket);
+    }
+    bucket.push(e.target);
+  }
+  const queue: string[] = [];
+  for (const n of graph.nodes) {
+    if (n.is_entry) {
+      depths.set(n.id, 0);
+      queue.push(n.id);
+    }
+  }
+  while (queue.length > 0) {
+    const cur = queue.shift() as string;
+    const d = depths.get(cur) as number;
+    const children = adj.get(cur);
+    if (children === undefined) continue;
+    for (const child of children) {
+      if (depths.has(child)) continue;
+      depths.set(child, d + 1);
+      queue.push(child);
+    }
+  }
+  return { depths, packageByNode };
 }
 
 /**

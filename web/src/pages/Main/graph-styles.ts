@@ -430,6 +430,22 @@ export function buildStylesheet(theme: ThemeTokens): StylesheetStyle[] {
     },
   });
 
+  // ---- lane-pulse (R12 Layer Editor hover affordance) ----
+  // Wired by LayerEditorBar on chip mouseenter/mouseleave. Renders a soft
+  // accent halo so the user can see which canvas nodes correspond to the
+  // hovered lane chip. Kept as a base-stylesheet rule because incremental
+  // border-overlay overrides survive cy.style().update() better that way.
+  sheet.push({
+    selector: 'node.lane-pulse',
+    style: {
+      'border-color': theme.accent,
+      'border-width': 4,
+      'overlay-color': theme.accent,
+      'overlay-opacity': 0.18,
+      'overlay-padding': 6,
+    },
+  });
+
   return sheet;
 }
 
