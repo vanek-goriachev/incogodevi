@@ -682,11 +682,19 @@ function applyExpansion(
     const cn = cy.$id(id);
     if (cn.empty()) continue;
     const isEntry = cn.data('is_entry') === true || cn.hasClass('entry');
-    // Read live render width so the scoped positioner respects per-node
-    // footprints — keeps the R8 invariant (parent's box hugs children)
-    // tight when struct/method labels happen to be wide.
+    // Read live render width AND height so the scoped positioner respects
+    // per-node footprints — keeps the R8 invariant (parent's box hugs
+    // children) tight when struct/method labels happen to be wide or
+    // tall. The L→R orientation makes height the primary spacing axis
+    // and width the secondary one.
     const w = Number.isFinite(cn.outerWidth()) ? cn.outerWidth() : undefined;
-    localNodes.push({ id, isEntry, ...(w !== undefined ? { width: w } : {}) });
+    const h = Number.isFinite(cn.outerHeight()) ? cn.outerHeight() : undefined;
+    localNodes.push({
+      id,
+      isEntry,
+      ...(w !== undefined ? { width: w } : {}),
+      ...(h !== undefined ? { height: h } : {}),
+    });
     if (isEntry) localEntries.add(id);
   }
   const localEdges: LayoutEdge[] = [];
@@ -704,17 +712,17 @@ function applyExpansion(
     localEdges,
     localEntries,
     {
-      canvasWidth: localCanvas,
+      canvasHeight: localCanvas,
       topPadding: 60,
-      layerGap: 70,
-      minNodeGap: 110,
+      layerGap: 140,
+      minNodeGap: 70,
       // The scoped layout rarely has more than 10 siblings per layer; cap
-      // the wrap threshold low so even modestly-sized packages stay tall
-      // and narrow inside the compound box rather than wide and short.
-      maxNodesPerRow: 8,
-      rowGap: 50,
+      // the wrap threshold low so even modestly-sized packages stay short
+      // and wide inside the compound box rather than tall and narrow.
+      maxNodesPerColumn: 8,
+      columnGap: 80,
       nodeBuffer: 20,
-      deadRegion: { dx: 90, dy: 70 },
+      deadRegion: { dx: 0, dy: 90 },
     },
   );
   // Re-origin the local layout onto the seed centre so the cluster appears

@@ -1,21 +1,23 @@
 /**
- * Unit tests for the reach-depth pure positioner.
+ * Unit tests for the reach-depth pure positioner (L→R orientation, PR #54).
  *
  * The function under test is Cytoscape-free: it accepts plain `LayoutNode`,
  * `LayoutEdge` and `entryIds` data and returns a `Map<id, {x,y}>`. The tests
  * lock down the algorithm's guarantees:
  *   1. BFS min-depth from entries — multi-source, first-visit wins.
  *   2. Back-edges do not change a node's canonical depth.
- *   3. Unreachable nodes pack into a compact grid offset from the reachable
- *      bounding box (not a wide column).
- *   4. Barycenter ordering on layer k uses the average parent x on k-1.
+ *   3. Unreachable nodes pack into a compact grid offset BELOW the
+ *      reachable bounding box (not a wide column to the right).
+ *   4. Barycenter ordering on layer k uses the average parent y on k-1.
  *   5. Determinism — identical inputs return deeply-equal maps.
- *   6. Multi-row wrap — when a layer exceeds `maxNodesPerRow`, it splits
- *      onto rows separated by `rowGap`; the next layer is still pushed by
- *      a full `layerGap`.
- *   7. Per-node width — neighbours' centre-to-centre distance respects
- *      `(wA + wB)/2 + buffer` when widths are supplied, preventing
- *      bounding-box overlap for wide compound parents.
+ *   6. Multi-column wrap — when a layer exceeds `maxNodesPerColumn`, it
+ *      splits onto sub-columns separated by `columnGap`; the next layer
+ *      is still pushed by a full `layerGap`.
+ *   7. Per-node height — neighbours' vertical centre-to-centre distance
+ *      respects `(hA + hB)/2 + buffer` when heights are supplied,
+ *      preventing bounding-box overlap for tall compound parents.
+ *   8. Entry-only fixture: every entry sits in the leftmost column (same
+ *      x), barycenter ordering not applicable.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -27,11 +29,11 @@ import {
 } from '../../pages/Main/layout/reachDepth';
 
 const OPTS = {
-  canvasWidth: 1200,
+  canvasHeight: 1200,
   topPadding: 80,
   layerGap: 200,
   minNodeGap: 200,
-  deadRegion: { dx: 200, dy: 160 },
+  deadRegion: { dx: 0, dy: 160 },
 } as const;
 
 describe('computeReachDepthPositions', () => {
@@ -53,15 +55,15 @@ describe('computeReachDepthPositions', () => {
       { source: 'b', target: 'c' },
     ];
     const out = computeReachDepthPositions(nodes, edges, new Set(['e']), OPTS);
-    const ye = out.get('e')!.y;
-    const ya = out.get('a')!.y;
-    const yb = out.get('b')!.y;
-    const yc = out.get('c')!.y;
-    expect(ya).toBeGreaterThan(ye);
-    expect(yb).toBeGreaterThan(ya);
-    expect(yc).toBeGreaterThan(yb);
-    // Layer 1 sits below the entry by exactly one layerGap.
-    expect(ya - ye).toBe(OPTS.layerGap);
+    const xe = out.get('e')!.x;
+    const xa = out.get('a')!.x;
+    const xb = out.get('b')!.x;
+    const xc = out.get('c')!.x;
+    expect(xa).toBeGreaterThan(xe);
+    expect(xb).toBeGreaterThan(xa);
+    expect(xc).toBeGreaterThan(xb);
+    // Layer 1 sits one layerGap to the right of the entry column.
+    expect(xa - xe).toBe(OPTS.layerGap);
   });
 
   it('two entries pointing at the same node yield min-depth = 1', () => {
@@ -80,13 +82,13 @@ describe('computeReachDepthPositions', () => {
       new Set(['e1', 'e2']),
       OPTS,
     );
-    // Both entries on the same row.
-    expect(out.get('e1')!.y).toBe(out.get('e2')!.y);
-    // x is exactly one layer down.
-    expect(out.get('x')!.y - out.get('e1')!.y).toBe(OPTS.layerGap);
+    // Both entries share the same x (leftmost column).
+    expect(out.get('e1')!.x).toBe(out.get('e2')!.x);
+    // x is exactly one layer to the right.
+    expect(out.get('x')!.x - out.get('e1')!.x).toBe(OPTS.layerGap);
   });
 
-  it('back-edges do not lower a node already placed at a shallower depth', () => {
+  it('back-edges do not push a node already placed at a shallower depth further right', () => {
     // e → a → b ; b → a (back-edge). a's depth must stay 1, not 3.
     const nodes: LayoutNode[] = [
       { id: 'e', isEntry: true },
@@ -99,13 +101,13 @@ describe('computeReachDepthPositions', () => {
       { source: 'b', target: 'a' }, // back-edge
     ];
     const out = computeReachDepthPositions(nodes, edges, new Set(['e']), OPTS);
-    const ya = out.get('a')!.y;
-    const yb = out.get('b')!.y;
-    expect(ya).toBeLessThan(yb);
-    expect(ya - out.get('e')!.y).toBe(OPTS.layerGap);
+    const xa = out.get('a')!.x;
+    const xb = out.get('b')!.x;
+    expect(xa).toBeLessThan(xb);
+    expect(xa - out.get('e')!.x).toBe(OPTS.layerGap);
   });
 
-  it('packs unreachable nodes into a compact grid offset from the reachable region', () => {
+  it('packs unreachable nodes into a compact grid offset BELOW the reachable region', () => {
     const nodes: LayoutNode[] = [
       { id: 'e', isEntry: true },
       { id: 'a' },
@@ -116,12 +118,10 @@ describe('computeReachDepthPositions', () => {
     ];
     const edges: LayoutEdge[] = [{ source: 'e', target: 'a' }];
     const out = computeReachDepthPositions(nodes, edges, new Set(['e']), OPTS);
-    // Reachable bounding box max
-    const reachableMaxX = Math.max(out.get('e')!.x, out.get('a')!.x);
+    // Reachable bounding box max y — dead region must sit below it.
     const reachableMaxY = Math.max(out.get('e')!.y, out.get('a')!.y);
     for (const id of ['d1', 'd2', 'd3', 'd4']) {
       const p = out.get(id)!;
-      expect(p.x).toBeGreaterThan(reachableMaxX);
       expect(p.y).toBeGreaterThan(reachableMaxY);
     }
     // Compact grid — 4 nodes in a 2x2 (sqrt(4)=2 columns).
@@ -131,11 +131,11 @@ describe('computeReachDepthPositions', () => {
     expect(d3.y).toBeGreaterThan(d1.y);
   });
 
-  it('barycenter ordering: layer-1 nodes sort by average parent x', () => {
-    // Layer 0: P1, P2, P3 — alphabetically sorted ids. Default `minNodeGap`
-    // gives them centre-to-centre 200 px (or wider if the canvas allows).
-    // Parents map: A ← P1, P2 (avg lo); B ← P3 (avg hi); C ← P1, P3 (avg mid).
-    // Expected layer-1 order left→right: A, C, B.
+  it('barycenter ordering: layer-1 nodes sort by average parent y', () => {
+    // Layer 0: P1, P2, P3 — alphabetically sorted ids on the entry column.
+    // Default `minNodeGap` gives them centre-to-centre 200 px on y.
+    // Parents map: A ← P1, P2 (avg lo y); B ← P3 (avg hi y); C ← P1, P3
+    // (avg mid). Expected layer-1 order top→bottom: A, C, B.
     const nodes: LayoutNode[] = [
       { id: 'P1', isEntry: true },
       { id: 'P2', isEntry: true },
@@ -157,12 +157,12 @@ describe('computeReachDepthPositions', () => {
       new Set(['P1', 'P2', 'P3']),
       OPTS,
     );
-    const ax = out.get('A')!.x;
-    const bx = out.get('B')!.x;
-    const cx = out.get('C')!.x;
-    // Left-to-right order: A, C, B
-    expect(ax).toBeLessThan(cx);
-    expect(cx).toBeLessThan(bx);
+    const ay = out.get('A')!.y;
+    const by = out.get('B')!.y;
+    const cy = out.get('C')!.y;
+    // Top-to-bottom order: A, C, B
+    expect(ay).toBeLessThan(cy);
+    expect(cy).toBeLessThan(by);
   });
 
   it('is idempotent — calling twice with the same input returns deeply-equal positions', () => {
@@ -201,17 +201,43 @@ describe('computeReachDepthPositions', () => {
       OPTS,
     );
     expect(Object.fromEntries(out1)).toEqual(Object.fromEntries(out2));
-    // All three on the same y (layer 0).
-    expect(out1.get('a')!.y).toBe(out1.get('b')!.y);
-    expect(out1.get('b')!.y).toBe(out1.get('c')!.y);
-    // x in alphabetical order
-    expect(out1.get('a')!.x).toBeLessThan(out1.get('b')!.x);
-    expect(out1.get('b')!.x).toBeLessThan(out1.get('c')!.x);
+    // All three on the same x (layer 0, leftmost column).
+    expect(out1.get('a')!.x).toBe(out1.get('b')!.x);
+    expect(out1.get('b')!.x).toBe(out1.get('c')!.x);
+    // y in alphabetical order
+    expect(out1.get('a')!.y).toBeLessThan(out1.get('b')!.y);
+    expect(out1.get('b')!.y).toBeLessThan(out1.get('c')!.y);
   });
 
-  // ----------- Multi-row wrap (Bug 1 fix) -----------
-  it('wraps a layer onto multiple rows when its size exceeds maxNodesPerRow', () => {
-    // 10 entries, maxNodesPerRow = 4 → 3 rows of 4/4/2 (uniform-ish: 4+4+2).
+  // ----------- L→R orientation guard (PR #54) -----------
+  it('entry-only fixture lays out in a column at the smallest x', () => {
+    // Mixed entries + non-reachable nodes. Entries must dominate the
+    // leftmost x and every layer-0 entry must share that x.
+    const nodes: LayoutNode[] = [
+      { id: 'e1', isEntry: true },
+      { id: 'e2', isEntry: true },
+      { id: 'e3', isEntry: true },
+      { id: 'orphan' }, // unreachable
+    ];
+    const out = computeReachDepthPositions(
+      nodes,
+      [],
+      new Set(['e1', 'e2', 'e3']),
+      OPTS,
+    );
+    const xs = ['e1', 'e2', 'e3'].map((id) => out.get(id)!.x);
+    const minX = Math.min(...xs);
+    // Every entry within ±1 px of the global min x (leftmost column).
+    for (const x of xs) {
+      expect(Math.abs(x - minX)).toBeLessThanOrEqual(1);
+    }
+    // Orphan is in the dead region, NOT at the entry column.
+    expect(out.get('orphan')!.x).toBeGreaterThanOrEqual(minX);
+  });
+
+  // ----------- Multi-column wrap (PR #54 rotated from PR #53 multirow) -----------
+  it('wraps a layer onto multiple columns when its size exceeds maxNodesPerColumn', () => {
+    // 10 entries, maxNodesPerColumn = 4 → 3 sub-columns of 4/4/2.
     const entries: LayoutNode[] = [];
     const entryIds = new Set<string>();
     for (let i = 0; i < 10; i += 1) {
@@ -220,32 +246,32 @@ describe('computeReachDepthPositions', () => {
       entryIds.add(id);
     }
     const out = computeReachDepthPositions(entries, [], entryIds, {
-      canvasWidth: 1600,
+      canvasHeight: 1600,
       topPadding: 80,
       layerGap: 200,
       minNodeGap: 200,
-      maxNodesPerRow: 4,
-      rowGap: 80,
+      maxNodesPerColumn: 4,
+      columnGap: 80,
     });
-    // Distinct y values = number of rows.
-    const ys = new Set<number>();
+    // Distinct x values = number of sub-columns.
+    const xs = new Set<number>();
     for (const id of entryIds) {
-      ys.add(out.get(id)!.y);
+      xs.add(out.get(id)!.x);
     }
-    expect(ys.size).toBeGreaterThan(1);
-    expect(ys.size).toBeLessThanOrEqual(4);
-    // Row gap is strictly smaller than layer gap.
-    const sortedYs = Array.from(ys).sort((a, b) => a - b);
-    const dy = (sortedYs[1] as number) - (sortedYs[0] as number);
-    expect(dy).toBe(80);
-    expect(dy).toBeLessThan(200);
+    expect(xs.size).toBeGreaterThan(1);
+    expect(xs.size).toBeLessThanOrEqual(4);
+    // Column gap is strictly smaller than layer gap.
+    const sortedXs = Array.from(xs).sort((a, b) => a - b);
+    const dx = (sortedXs[1] as number) - (sortedXs[0] as number);
+    expect(dx).toBe(80);
+    expect(dx).toBeLessThan(200);
   });
 
   it('keeps a clear layerGap between depth tiers even when the previous layer wrapped', () => {
-    // 6 entries (wrap into 2 rows at maxNodesPerRow=3), each pointing to a
-    // single child. The child must sit a full layerGap below the LAST row
-    // of the parent layer — i.e. the inter-layer gap is preserved across
-    // wrapped layers.
+    // 6 entries (wrap into 2 sub-columns at maxNodesPerColumn=3), each
+    // pointing to a single child. The child must sit a full layerGap to
+    // the right of the LAST sub-column of the parent layer — the inter-
+    // layer gap is preserved across wrapped layers.
     const nodes: LayoutNode[] = [];
     const edges: LayoutEdge[] = [];
     const entryIds = new Set<string>();
@@ -259,26 +285,26 @@ describe('computeReachDepthPositions', () => {
       edges.push({ source: `e${i}`, target: 'child' });
     }
     const out = computeReachDepthPositions(nodes, edges, entryIds, {
-      canvasWidth: 1200,
+      canvasHeight: 1200,
       topPadding: 80,
       layerGap: 200,
       minNodeGap: 200,
-      maxNodesPerRow: 3,
-      rowGap: 80,
+      maxNodesPerColumn: 3,
+      columnGap: 80,
     });
-    // The entry layer must have two distinct y values.
-    const entryYs = new Set<number>();
+    // The entry layer must have two distinct x values.
+    const entryXs = new Set<number>();
     for (let i = 0; i < 6; i += 1) {
-      entryYs.add(out.get(`e${i}`)!.y);
+      entryXs.add(out.get(`e${i}`)!.x);
     }
-    expect(entryYs.size).toBe(2);
-    const lastRowY = Math.max(...entryYs);
-    const childY = out.get('child')!.y;
-    // Child sits a full layerGap below the last entry row.
-    expect(childY - lastRowY).toBe(200);
+    expect(entryXs.size).toBe(2);
+    const lastColX = Math.max(...entryXs);
+    const childX = out.get('child')!.x;
+    // Child sits a full layerGap to the right of the last entry sub-column.
+    expect(childX - lastColX).toBe(200);
     // Demo contract: between-layer gap must visibly exceed within-layer
-    // row gap.
-    expect(childY - lastRowY).toBeGreaterThan(80 * 2);
+    // column gap.
+    expect(childX - lastColX).toBeGreaterThan(80 * 2);
   });
 
   it('wrap output is still deterministic for the same inputs', () => {
@@ -290,51 +316,52 @@ describe('computeReachDepthPositions', () => {
       entryIds.add(id);
     }
     const opts = {
-      canvasWidth: 1600,
+      canvasHeight: 1600,
       topPadding: 80,
       layerGap: 200,
       minNodeGap: 200,
-      maxNodesPerRow: 5,
-      rowGap: 90,
+      maxNodesPerColumn: 5,
+      columnGap: 90,
     } as const;
     const out1 = computeReachDepthPositions(entries, [], entryIds, opts);
     const out2 = computeReachDepthPositions(entries, [], entryIds, opts);
     expect(Object.fromEntries(out1)).toEqual(Object.fromEntries(out2));
   });
 
-  // ----------- Per-node width (Bug 3 fix) -----------
-  it('per-node width prevents adjacent bounding-box overlap on the same row', () => {
-    // Two adjacent wide nodes: each width 300; minNodeGap 200 alone would
-    // allow centres 200 px apart → boxes overlap by 100 px. With per-node
-    // widths supplied + buffer 40, centres must end up ≥ 340 px apart.
+  // ----------- Per-node height (rotated Bug 3 fix) -----------
+  it('per-node height prevents adjacent bounding-box overlap in the same column', () => {
+    // Three tall nodes on layer 0: each height 300; minNodeGap 200 alone
+    // would allow centres 200 px apart → boxes overlap by 100 px. With
+    // per-node heights supplied + buffer 40, centres must end up
+    // ≥ 340 px apart on y.
     const nodes: LayoutNode[] = [
-      { id: 'a', isEntry: true, width: 300 },
-      { id: 'b', isEntry: true, width: 300 },
-      { id: 'c', isEntry: true, width: 100 },
+      { id: 'a', isEntry: true, height: 300 },
+      { id: 'b', isEntry: true, height: 300 },
+      { id: 'c', isEntry: true, height: 100 },
     ];
     const out = computeReachDepthPositions(
       nodes,
       [],
       new Set(['a', 'b', 'c']),
       {
-        canvasWidth: 2000,
+        canvasHeight: 2000,
         topPadding: 80,
         layerGap: 200,
         minNodeGap: 200,
         nodeBuffer: 40,
       },
     );
-    const ax = out.get('a')!.x;
-    const bx = out.get('b')!.x;
-    const cx = out.get('c')!.x;
+    const ay = out.get('a')!.y;
+    const by = out.get('b')!.y;
+    const cy = out.get('c')!.y;
     // Sorted alphabetically: a then b then c. a-b centres ≥ 300/2 + 300/2 + 40 = 340.
-    expect(bx - ax).toBeGreaterThanOrEqual(340 - 1); // allow 1 px rounding
+    expect(by - ay).toBeGreaterThanOrEqual(340 - 1); // allow 1 px rounding
     // b-c centres ≥ 300/2 + 100/2 + 40 = 240, also above minNodeGap=200.
-    expect(cx - bx).toBeGreaterThanOrEqual(240 - 1);
+    expect(cy - by).toBeGreaterThanOrEqual(240 - 1);
   });
 
-  it('falls back to minNodeGap when no width is supplied', () => {
-    // No widths → behaviour matches the legacy fixed-gap path.
+  it('falls back to minNodeGap when no height is supplied', () => {
+    // No heights → behaviour matches the legacy fixed-gap path.
     const nodes: LayoutNode[] = [
       { id: 'a', isEntry: true },
       { id: 'b', isEntry: true },
@@ -344,32 +371,32 @@ describe('computeReachDepthPositions', () => {
       [],
       new Set(['a', 'b']),
       {
-        canvasWidth: 800,
+        canvasHeight: 800,
         topPadding: 80,
         layerGap: 200,
         minNodeGap: 220,
       },
     );
-    const ax = out.get('a')!.x;
-    const bx = out.get('b')!.x;
-    expect(bx - ax).toBeGreaterThanOrEqual(220 - 1);
+    const ay = out.get('a')!.y;
+    const by = out.get('b')!.y;
+    expect(by - ay).toBeGreaterThanOrEqual(220 - 1);
   });
 
-  it('idempotence preserved when per-node widths and wrap are combined', () => {
+  it('idempotence preserved when per-node heights and wrap are combined', () => {
     const nodes: LayoutNode[] = [];
     const entryIds = new Set<string>();
     for (let i = 0; i < 8; i += 1) {
       const id = `n${String(i).padStart(2, '0')}`;
-      nodes.push({ id, isEntry: true, width: 120 + (i % 3) * 80 });
+      nodes.push({ id, isEntry: true, height: 120 + (i % 3) * 80 });
       entryIds.add(id);
     }
     const opts = {
-      canvasWidth: 1400,
+      canvasHeight: 1400,
       topPadding: 80,
       layerGap: 200,
       minNodeGap: 200,
-      maxNodesPerRow: 3,
-      rowGap: 70,
+      maxNodesPerColumn: 3,
+      columnGap: 70,
       nodeBuffer: 30,
     } as const;
     const out1 = computeReachDepthPositions(nodes, [], entryIds, opts);
