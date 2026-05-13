@@ -10,6 +10,18 @@
  *   - a "Сбросить" button to drop back to the default state,
  *   - an "unassigned" tray for lanes the user temporarily parked.
  *
+ * **feat/overlap-presets-package-filter** adds:
+ *
+ *   - a "Пресет" dropdown that loads a saved arrangement into the editor,
+ *   - "Сохранить как…" / "Удалить" buttons for managing the named-preset
+ *     list. Presets persist under `go-viz:<id>:layer-presets`.
+ *   - "Экспорт" / "Импорт" buttons that drop a portable `goviz1:<base64>`
+ *     string into a small modal (copy via the native clipboard API).
+ *   - an imperative `openAddGroupWithPrefix(prefix)` handle exposed via
+ *     `forwardRef`, used by the FiltersPanel's "Создать группу из фильтра"
+ *     button to pre-populate the inline form with a path prefix derived
+ *     from the bulk filter's matches.
+ *
  * Drag and drop uses the native HTML5 API (no library dependency) — the chip
  * sets `dataTransfer.setData('text/plain', laneKey)` on dragstart, and slots
  * read it back on drop. The same gesture works for both inter-slot moves
@@ -23,9 +35,24 @@
  */
 
 import type { Core } from 'cytoscape';
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+} from 'react';
 
 import { laneKeyOf, type Lane, type LayerEditorState } from '../layout/laneMapping';
+import {
+  PRESET_PREFIX,
+  decodePreset,
+  encodePreset,
+} from '../layout/layerPresets';
+import type { NamedPreset } from '../useLayerEditorState';
 import './LayerEditorBar.css';
 
 export interface LayerEditorBarProps {
@@ -39,25 +66,67 @@ export interface LayerEditorBarProps {
   onRemoveGroup: (id: string) => void;
   onMoveLane: (laneKey: string, toSlotIndex: number, toStackIndex: number) => void;
   onReset: () => void;
+  /** Replace the entire state — used by Import + preset load. */
+  onReplaceState: (next: LayerEditorState) => void;
+  /** Named presets list and CRUD callbacks. */
+  presets: readonly NamedPreset[];
+  onSavePreset: (name: string) => string;
+  onLoadPreset: (id: string) => void;
+  onDeletePreset: (id: string) => void;
   /** Live cytoscape core — drives the hover-pulse class. May be null. */
   cy?: Core | null;
 }
 
-export function LayerEditorBar({
-  state,
-  countsByLaneKey,
-  nodeIdsByLaneKey,
-  onAddGroup,
-  onRemoveGroup,
-  onMoveLane,
-  onReset,
-  cy = null,
-}: LayerEditorBarProps): JSX.Element {
+/** Imperative handle exposed to parents — currently just one open-form helper. */
+export interface LayerEditorBarHandle {
+  /** Open the "+ Группа" inline form with `prefix` pre-filled. */
+  openAddGroupWithPrefix: (prefix: string) => void;
+}
+
+/** Modal kinds for the inline preset / import-export dialogs. */
+type ModalKind = null | 'saveAs' | 'export' | 'import';
+
+function LayerEditorBarInner(
+  {
+    state,
+    countsByLaneKey,
+    nodeIdsByLaneKey,
+    onAddGroup,
+    onRemoveGroup,
+    onMoveLane,
+    onReset,
+    onReplaceState,
+    presets,
+    onSavePreset,
+    onLoadPreset,
+    onDeletePreset,
+    cy = null,
+  }: LayerEditorBarProps,
+  ref: React.ForwardedRef<LayerEditorBarHandle>,
+): JSX.Element {
   const [adding, setAdding] = useState<boolean>(false);
   const [nameDraft, setNameDraft] = useState<string>('');
   const [prefixDraft, setPrefixDraft] = useState<string>('');
   const [dragLaneKey, setDragLaneKey] = useState<string | null>(null);
   const [hoverSlot, setHoverSlot] = useState<number | null>(null);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('');
+  const [modal, setModal] = useState<ModalKind>(null);
+  const [saveAsDraft, setSaveAsDraft] = useState<string>('');
+  const [importDraft, setImportDraft] = useState<string>('');
+  const [importError, setImportError] = useState<string | null>(null);
+
+  // Imperative handle — opened by FiltersPanel's "Создать группу из фильтра".
+  useImperativeHandle(
+    ref,
+    () => ({
+      openAddGroupWithPrefix: (prefix: string) => {
+        setAdding(true);
+        setPrefixDraft(prefix);
+        setNameDraft('');
+      },
+    }),
+    [],
+  );
 
   // Hover-pulse: on chip hover we add a class to all matching cytoscape
   // nodes; on mouse-leave we strip it. Stored in a ref so we can clean up
@@ -149,8 +218,79 @@ export function LayerEditorBar({
     setAdding(false);
     setHoverSlot(null);
     setDragLaneKey(null);
+    setSelectedPresetId('');
     onReset();
   }, [onReset]);
+
+  // ---- preset handlers --------------------------------------------------
+  const handlePresetChange = useCallback(
+    (evt: React.ChangeEvent<HTMLSelectElement>) => {
+      const id = evt.target.value;
+      setSelectedPresetId(id);
+      if (id !== '') {
+        onLoadPreset(id);
+      }
+    },
+    [onLoadPreset],
+  );
+  const handleSaveAsOpen = useCallback(() => {
+    setSaveAsDraft('');
+    setModal('saveAs');
+  }, []);
+  const handleSaveAsConfirm = useCallback(() => {
+    const name = saveAsDraft.trim();
+    if (name === '') return;
+    const id = onSavePreset(name);
+    setSelectedPresetId(id);
+    setSaveAsDraft('');
+    setModal(null);
+  }, [saveAsDraft, onSavePreset]);
+  const handleDeletePreset = useCallback(() => {
+    if (selectedPresetId === '') return;
+    onDeletePreset(selectedPresetId);
+    setSelectedPresetId('');
+  }, [selectedPresetId, onDeletePreset]);
+  const handleExportOpen = useCallback(() => {
+    setModal('export');
+  }, []);
+  const handleImportOpen = useCallback(() => {
+    setImportDraft('');
+    setImportError(null);
+    setModal('import');
+  }, []);
+  const handleImportSubmit = useCallback(() => {
+    const result = decodePreset(importDraft);
+    if (!result.ok) {
+      setImportError(result.error);
+      return;
+    }
+    onReplaceState(result.state);
+    setImportError(null);
+    setImportDraft('');
+    setModal(null);
+  }, [importDraft, onReplaceState]);
+  const closeModal = useCallback(() => {
+    setModal(null);
+    setImportError(null);
+  }, []);
+
+  // Encoded payload for the export modal — recomputed only when the state
+  // identity changes or the modal opens.
+  const exportPayload = useMemo<string>(() => {
+    if (modal !== 'export') return '';
+    return encodePreset(state);
+  }, [modal, state]);
+
+  const handleCopyExport = useCallback(() => {
+    if (exportPayload === '') return;
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.clipboard !== undefined &&
+      typeof navigator.clipboard.writeText === 'function'
+    ) {
+      void navigator.clipboard.writeText(exportPayload);
+    }
+  }, [exportPayload]);
 
   // Pre-compute chip labels so the render stays cheap.
   const chipLabelFor = useCallback(
@@ -183,6 +323,56 @@ export function LayerEditorBar({
           из BFS-слоя.
         </p>
         <div className="layer-editor-bar__actions">
+          <label className="layer-editor-bar__preset-label">
+            <span className="layer-editor-bar__preset-caption">Пресет</span>
+            <select
+              className="layer-editor-bar__select"
+              value={selectedPresetId}
+              onChange={handlePresetChange}
+              data-testid="layer-editor-preset-select"
+              aria-label="Выбрать пресет"
+            >
+              <option value="">(нет)</option>
+              {presets.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="layer-editor-bar__btn"
+            onClick={handleSaveAsOpen}
+            data-testid="layer-editor-save-as"
+          >
+            Сохранить как…
+          </button>
+          <button
+            type="button"
+            className="layer-editor-bar__btn"
+            onClick={handleDeletePreset}
+            disabled={selectedPresetId === ''}
+            data-testid="layer-editor-delete-preset"
+          >
+            Удалить
+          </button>
+          <button
+            type="button"
+            className="layer-editor-bar__btn"
+            onClick={handleExportOpen}
+            data-testid="layer-editor-export"
+          >
+            Экспорт
+          </button>
+          <button
+            type="button"
+            className="layer-editor-bar__btn"
+            onClick={handleImportOpen}
+            data-testid="layer-editor-import"
+          >
+            Импорт
+          </button>
           {adding ? (
             <div className="layer-editor-bar__addform" data-testid="layer-editor-addform">
               <input
@@ -378,6 +568,213 @@ export function LayerEditorBar({
           })}
         </div>
       ) : null}
+
+      {modal !== null ? (
+        <PresetModal
+          kind={modal}
+          presetCount={presets.length}
+          payload={exportPayload}
+          importDraft={importDraft}
+          saveAsDraft={saveAsDraft}
+          importError={importError}
+          onSaveAsDraftChange={setSaveAsDraft}
+          onImportDraftChange={(next) => {
+            setImportDraft(next);
+            if (importError !== null) setImportError(null);
+          }}
+          onSaveAsConfirm={handleSaveAsConfirm}
+          onImportSubmit={handleImportSubmit}
+          onCopyExport={handleCopyExport}
+          onClose={closeModal}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+export const LayerEditorBar = forwardRef<LayerEditorBarHandle, LayerEditorBarProps>(
+  LayerEditorBarInner,
+);
+
+interface PresetModalProps {
+  kind: Exclude<ModalKind, null>;
+  presetCount: number;
+  payload: string;
+  importDraft: string;
+  saveAsDraft: string;
+  importError: string | null;
+  onSaveAsDraftChange: (next: string) => void;
+  onImportDraftChange: (next: string) => void;
+  onSaveAsConfirm: () => void;
+  onImportSubmit: () => void;
+  onCopyExport: () => void;
+  onClose: () => void;
+}
+
+/**
+ * Small modal reusing the entry-dialog visual pattern. One component
+ * dispatches on `kind` so the three preset actions stay tonally consistent.
+ */
+function PresetModal({
+  kind,
+  payload,
+  importDraft,
+  saveAsDraft,
+  importError,
+  onSaveAsDraftChange,
+  onImportDraftChange,
+  onSaveAsConfirm,
+  onImportSubmit,
+  onCopyExport,
+  onClose,
+}: PresetModalProps): JSX.Element {
+  const title =
+    kind === 'saveAs'
+      ? 'Сохранить пресет'
+      : kind === 'export'
+        ? 'Экспорт пресета'
+        : 'Импорт пресета';
+  return (
+    <div
+      className="layer-editor-bar__modal-backdrop"
+      role="presentation"
+      onClick={(evt) => {
+        if (evt.target === evt.currentTarget) onClose();
+      }}
+      data-testid="layer-editor-modal-backdrop"
+    >
+      <div
+        className="layer-editor-bar__modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        data-testid={`layer-editor-modal-${kind}`}
+      >
+        <header className="layer-editor-bar__modal-head">
+          <h4 className="layer-editor-bar__modal-title">{title}</h4>
+          <button
+            type="button"
+            className="layer-editor-bar__btn"
+            onClick={onClose}
+            aria-label="Закрыть"
+            data-testid="layer-editor-modal-close"
+          >
+            ×
+          </button>
+        </header>
+        {kind === 'saveAs' ? (
+          <div className="layer-editor-bar__modal-body">
+            <label className="layer-editor-bar__modal-label" htmlFor="le-save-name">
+              Имя пресета
+            </label>
+            <input
+              id="le-save-name"
+              type="text"
+              value={saveAsDraft}
+              onChange={(e) => {
+                onSaveAsDraftChange(e.target.value);
+              }}
+              data-testid="layer-editor-save-as-input"
+              placeholder="Например, «Архитектура»"
+              autoFocus
+            />
+            <div className="layer-editor-bar__modal-actions">
+              <button
+                type="button"
+                className="layer-editor-bar__btn"
+                onClick={onSaveAsConfirm}
+                disabled={saveAsDraft.trim() === ''}
+                data-testid="layer-editor-save-as-confirm"
+              >
+                Сохранить
+              </button>
+              <button
+                type="button"
+                className="layer-editor-bar__btn"
+                onClick={onClose}
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {kind === 'export' ? (
+          <div className="layer-editor-bar__modal-body">
+            <p className="layer-editor-bar__hint">
+              Скопируйте строку и поделитесь ею с коллегой.
+            </p>
+            <textarea
+              className="layer-editor-bar__modal-textarea"
+              readOnly
+              value={payload}
+              rows={4}
+              data-testid="layer-editor-export-text"
+            />
+            <div className="layer-editor-bar__modal-actions">
+              <button
+                type="button"
+                className="layer-editor-bar__btn"
+                onClick={onCopyExport}
+                data-testid="layer-editor-export-copy"
+              >
+                Скопировать
+              </button>
+              <button
+                type="button"
+                className="layer-editor-bar__btn"
+                onClick={onClose}
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {kind === 'import' ? (
+          <div className="layer-editor-bar__modal-body">
+            <label className="layer-editor-bar__modal-label" htmlFor="le-import-text">
+              Вставьте строку, начинающуюся с «{PRESET_PREFIX}»
+            </label>
+            <textarea
+              id="le-import-text"
+              className="layer-editor-bar__modal-textarea"
+              value={importDraft}
+              onChange={(e) => {
+                onImportDraftChange(e.target.value);
+              }}
+              rows={4}
+              data-testid="layer-editor-import-text"
+              autoFocus
+              spellCheck={false}
+            />
+            {importError !== null ? (
+              <p
+                className="layer-editor-bar__hint layer-editor-bar__hint--error"
+                data-testid="layer-editor-import-error"
+              >
+                {importError}
+              </p>
+            ) : null}
+            <div className="layer-editor-bar__modal-actions">
+              <button
+                type="button"
+                className="layer-editor-bar__btn"
+                onClick={onImportSubmit}
+                disabled={importDraft.trim() === ''}
+                data-testid="layer-editor-import-submit"
+              >
+                Загрузить
+              </button>
+              <button
+                type="button"
+                className="layer-editor-bar__btn"
+                onClick={onClose}
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

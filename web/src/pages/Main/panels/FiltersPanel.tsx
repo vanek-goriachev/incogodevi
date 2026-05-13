@@ -34,6 +34,22 @@ import './FiltersPanel.css';
 /** Show the package-search input once the package list grows past this. */
 export const PACKAGE_SEARCH_THRESHOLD = 20;
 
+/**
+ * Maximum number of matched package paths the bulk-filter UI lists at once.
+ * Past this we show a "…еще N" hint so a project with thousands of mocks
+ * does not paint the DOM into oblivion.
+ */
+export const PACKAGE_FILTER_PREVIEW_LIMIT = 30;
+
+/**
+ * Hard ceiling on the bulk-filter regex length. Acts as a soft mitigation
+ * against catastrophic-backtracking patterns the user might paste in by
+ * accident. Combined with the try/catch around `new RegExp`, a malicious
+ * pattern is silently rejected (empty match set + red border) instead of
+ * locking up the React render loop.
+ */
+export const PACKAGE_FILTER_MAX_REGEX_LENGTH = 200;
+
 /** Debounce for the `Find` input: spec mandates 150 ms (task §В scope). */
 export const FIND_DEBOUNCE_MS = 150;
 
@@ -67,6 +83,15 @@ export interface FiltersPanelProps {
    * — only the cy core knows the freshly inserted member nodes.
    */
   cy?: Core | null;
+  /**
+   * Optional callback wired from `MainView`. Triggered by the bulk filter
+   * UI's "Создать группу из фильтра" button — the filter section computes
+   * the longest common prefix across matched packages (or falls back to the
+   * filter string itself) and asks the Layer Editor to open its "+ Группа"
+   * form with that prefix pre-filled. Wiring goes through `MainView` rather
+   * than a global to keep the React tree explicit.
+   */
+  onCreateGroupFromFilter?: (prefix: string) => void;
 }
 
 /**
@@ -151,6 +176,83 @@ function snapshotFromGraph(graph: Graph | null): CanvasSnapshot {
 }
 
 /**
+ * Match `pkg` against `needle`. Substring mode is case-insensitive; regex
+ * mode honours JavaScript's `RegExp` flags inferred from `/<pattern>/<flags>`
+ * notation. Returns `false` for any invalid input combination (caller
+ * filters with the same helper, but the regex-error path uses
+ * `compilePackageRegex` to surface the parse failure to the UI).
+ */
+export function packagePathMatches(
+  pkg: string,
+  needle: string,
+  useRegex: boolean,
+  regex?: RegExp | null,
+): boolean {
+  if (needle === '') return false;
+  if (useRegex) {
+    if (regex === null || regex === undefined) return false;
+    try {
+      return regex.test(pkg);
+    } catch {
+      return false;
+    }
+  }
+  return pkg.toLowerCase().includes(needle.toLowerCase());
+}
+
+/**
+ * Compile a regex from the user's text input. Returns `{ ok, regex }` on
+ * success and `{ ok: false, error }` on parse failure / over-long input so
+ * the panel can render a red border + empty list.
+ */
+export function compilePackageRegex(
+  raw: string,
+): { ok: true; regex: RegExp } | { ok: false; error: string } {
+  if (raw === '') {
+    return { ok: false, error: 'Пустой шаблон' };
+  }
+  if (raw.length > PACKAGE_FILTER_MAX_REGEX_LENGTH) {
+    return { ok: false, error: 'Слишком длинный шаблон' };
+  }
+  try {
+    return { ok: true, regex: new RegExp(raw, 'i') };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Невалидный шаблон',
+    };
+  }
+}
+
+/**
+ * Longest common prefix across `packages`. Used by "Создать группу из
+ * фильтра" to seed the Layer Editor's "+ Группа" form. When the matched
+ * packages do not share a usable common prefix (length < 1 OR a single
+ * character that is not a path segment), we fall back to the filter
+ * string itself (caller decides). Pure function — exported for tests.
+ */
+export function longestCommonPathPrefix(packages: readonly string[]): string {
+  if (packages.length === 0) return '';
+  if (packages.length === 1) return packages[0] ?? '';
+  let prefix = packages[0] ?? '';
+  for (let i = 1; i < packages.length; i += 1) {
+    const cur = packages[i] ?? '';
+    let j = 0;
+    while (j < prefix.length && j < cur.length && prefix[j] === cur[j]) {
+      j += 1;
+    }
+    prefix = prefix.slice(0, j);
+    if (prefix === '') break;
+  }
+  // Trim trailing partial path segments — `a/mocks/foo` and `a/mocks/bar`
+  // produce `a/mocks/` which we want to surface as `a/mocks`.
+  while (prefix.length > 0 && prefix.endsWith('/')) {
+    prefix = prefix.slice(0, -1);
+  }
+  return prefix;
+}
+
+/**
  * Filters panel. Keeps a small amount of internal state for the (debounced)
  * `find` input and the package-search filter; persistent filter state lives in
  * `value` and is updated through `onChange`.
@@ -160,6 +262,7 @@ export function FiltersPanel({
   value,
   onChange,
   cy = null,
+  onCreateGroupFromFilter,
 }: FiltersPanelProps): JSX.Element {
   // Bumped on every cy `add` / `remove` so the snapshot memo recomputes.
   // We don't read this counter directly — its mere presence in the dep array
@@ -220,6 +323,13 @@ export function FiltersPanel({
 
   const [findDraft, setFindDraft] = useState<string>(value.find);
   const [packageQuery, setPackageQuery] = useState<string>('');
+  // Bulk package-filter state. `bulkQuery` is the text in the input;
+  // `bulkUseRegex` flips between substring (default) and regex modes. The
+  // panel re-derives the live match list on every keystroke without
+  // debouncing — the matching is O(packageCount) and well inside the
+  // NFR-03 budget even on 1000-package graphs.
+  const [bulkQuery, setBulkQuery] = useState<string>('');
+  const [bulkUseRegex, setBulkUseRegex] = useState<boolean>(false);
   const findInputRef = useRef<HTMLInputElement | null>(null);
 
   // Keep the local input draft in sync if the parent rewrites the spec
@@ -355,6 +465,82 @@ export function FiltersPanel({
     [value, onChange],
   );
 
+  // -------------------------------------------------------------------------
+  // Bulk package filter (Feature 3 — this PR). Derives the matching package
+  // list from `bulkQuery` + `bulkUseRegex`. The match flows into:
+  //   - the preview list shown under the input (visual confirmation),
+  //   - the "Скрыть найденные" / "Показать найденные" buttons which mutate
+  //     the SAME per-package visibility flags the existing checkboxes use,
+  //   - the "Создать группу из фильтра" button which feeds the longest
+  //     common prefix of matched packages back to the Layer Editor.
+  // -------------------------------------------------------------------------
+  const bulkRegexResult = useMemo(() => {
+    if (!bulkUseRegex) return null;
+    if (bulkQuery === '') return null;
+    return compilePackageRegex(bulkQuery);
+  }, [bulkQuery, bulkUseRegex]);
+
+  const bulkMatches = useMemo<string[]>(() => {
+    if (bulkQuery === '') return [];
+    if (bulkUseRegex) {
+      if (bulkRegexResult === null || !bulkRegexResult.ok) return [];
+      return packages.filter((p) =>
+        packagePathMatches(p, bulkQuery, true, bulkRegexResult.regex),
+      );
+    }
+    return packages.filter((p) =>
+      packagePathMatches(p, bulkQuery, false, null),
+    );
+  }, [packages, bulkQuery, bulkUseRegex, bulkRegexResult]);
+
+  const bulkRegexError =
+    bulkUseRegex && bulkQuery !== '' && bulkRegexResult !== null && !bulkRegexResult.ok
+      ? bulkRegexResult.error
+      : null;
+
+  // Bulk-action plumbing: flipping visibility for a SET of packages should
+  // route through the same FilterSpec mutation as the per-package
+  // checkboxes. We compute the resulting `selected` list + mode in one
+  // shot so the spec change is atomic.
+  const applyBulkVisibility = useCallback(
+    (matchedPackages: readonly string[], on: boolean) => {
+      if (matchedPackages.length === 0) return;
+      const baseline =
+        value.packages.mode === 'all'
+          ? new Set(packages)
+          : new Set(value.packages.selected);
+      for (const pkg of matchedPackages) {
+        if (on) baseline.add(pkg);
+        else baseline.delete(pkg);
+      }
+      const selected = Array.from(baseline).sort((a, b) => a.localeCompare(b));
+      const mode: 'all' | 'subset' =
+        selected.length === packages.length ? 'all' : 'subset';
+      onChange({
+        ...value,
+        packages: { mode, selected: mode === 'all' ? [] : selected },
+      });
+    },
+    [value, packages, onChange],
+  );
+
+  const handleBulkHide = useCallback(() => {
+    applyBulkVisibility(bulkMatches, false);
+  }, [applyBulkVisibility, bulkMatches]);
+  const handleBulkShow = useCallback(() => {
+    applyBulkVisibility(bulkMatches, true);
+  }, [applyBulkVisibility, bulkMatches]);
+
+  const handleCreateGroupFromFilter = useCallback(() => {
+    if (onCreateGroupFromFilter === undefined) return;
+    if (bulkMatches.length === 0) return;
+    const lcp = longestCommonPathPrefix(bulkMatches);
+    // Fall back to the literal filter query when the LCP is empty or too
+    // short to be a useful prefix on its own.
+    const prefix = lcp.length >= 2 ? lcp : bulkQuery;
+    onCreateGroupFromFilter(prefix);
+  }, [bulkMatches, bulkQuery, onCreateGroupFromFilter]);
+
   const filteredLocalPackages = useMemo(() => {
     if (packageQuery === '') {
       return localPackages;
@@ -469,6 +655,112 @@ export function FiltersPanel({
           );
         })}
       </fieldset>
+
+      <div
+        className="filters-panel__group filters-panel__group--bulk"
+        data-testid="filters-package-bulk"
+      >
+        <label
+          className="filters-panel__legend"
+          htmlFor="filters-package-bulk-input"
+        >
+          Фильтр пакетов
+        </label>
+        <input
+          id="filters-package-bulk-input"
+          type="search"
+          className={`filters-panel__pkg-search${
+            bulkRegexError !== null ? ' filters-panel__pkg-search--error' : ''
+          }`}
+          placeholder={bulkUseRegex ? '/^mocks$/' : 'mocks'}
+          value={bulkQuery}
+          onChange={(evt) => {
+            setBulkQuery(evt.target.value);
+          }}
+          aria-label="Bulk package filter"
+          aria-invalid={bulkRegexError !== null}
+          spellCheck={false}
+          autoComplete="off"
+          data-testid="filters-package-bulk-input"
+        />
+        <label className="filters-panel__row filters-panel__row--inline">
+          <input
+            type="checkbox"
+            checked={bulkUseRegex}
+            onChange={(evt) => {
+              setBulkUseRegex(evt.target.checked);
+            }}
+            aria-label="Toggle regex matching"
+            data-testid="filters-package-bulk-regex"
+          />
+          <span className="filters-panel__row-label">Regex</span>
+        </label>
+        {bulkRegexError !== null ? (
+          <p className="filters-panel__hint filters-panel__hint--error">
+            {bulkRegexError}
+          </p>
+        ) : null}
+        <p
+          className="filters-panel__hint"
+          data-testid="filters-package-bulk-count"
+        >
+          {bulkQuery === ''
+            ? 'Введите фильтр, чтобы скрыть или показать пакеты разом.'
+            : `Найдено ${String(bulkMatches.length)} пакетов`}
+        </p>
+        {bulkMatches.length > 0 ? (
+          <ul
+            className="filters-panel__pkg-list filters-panel__pkg-list--bulk"
+            data-testid="filters-package-bulk-list"
+          >
+            {bulkMatches.slice(0, PACKAGE_FILTER_PREVIEW_LIMIT).map((p) => (
+              <li
+                key={p}
+                className="filters-panel__row-label filters-panel__row-label--mono"
+                data-testid={`filters-package-bulk-match-${p}`}
+              >
+                {p}
+              </li>
+            ))}
+            {bulkMatches.length > PACKAGE_FILTER_PREVIEW_LIMIT ? (
+              <li className="filters-panel__hint">
+                …еще {String(bulkMatches.length - PACKAGE_FILTER_PREVIEW_LIMIT)}
+              </li>
+            ) : null}
+          </ul>
+        ) : null}
+        <div className="filters-panel__bulk-actions">
+          <button
+            type="button"
+            className="filters-panel__reset"
+            onClick={handleBulkHide}
+            disabled={bulkMatches.length === 0}
+            data-testid="filters-package-bulk-hide"
+          >
+            Скрыть найденные
+          </button>
+          <button
+            type="button"
+            className="filters-panel__reset"
+            onClick={handleBulkShow}
+            disabled={bulkMatches.length === 0}
+            data-testid="filters-package-bulk-show"
+          >
+            Показать найденные
+          </button>
+          {onCreateGroupFromFilter !== undefined ? (
+            <button
+              type="button"
+              className="filters-panel__reset"
+              onClick={handleCreateGroupFromFilter}
+              disabled={bulkMatches.length === 0}
+              data-testid="filters-package-bulk-group"
+            >
+              Создать группу из фильтра
+            </button>
+          ) : null}
+        </div>
+      </div>
 
       <details className="filters-panel__group" data-testid="filters-packages">
         <summary className="filters-panel__legend">
