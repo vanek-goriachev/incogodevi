@@ -697,13 +697,20 @@ function applyReachDepthPositions(cy: Core): void {
     }
     const id = n.id();
     const isEntry = n.data('is_entry') === true || n.hasClass('entry');
-    // Pass live `outerWidth()` so the positioner can space wide compound
-    // parents (expanded packages) far enough apart that their bounding
-    // boxes do not overlap on Relayout. Bug 3 fix — pre-PR the positioner
-    // used a fixed `minNodeGap` regardless of node footprint, so once two
-    // adjacent compounds grew past ~220 px wide their bboxes touched.
+    // Pass live `outerWidth()` / `outerHeight()` so the positioner can
+    // space wide compound parents (expanded packages) far enough apart
+    // that their bounding boxes do not overlap on Relayout. The L→R
+    // orientation makes height the primary spacing concern (intra-column
+    // adjacency) and width the secondary one (inter-sub-column spread
+    // when a layer wraps).
     const w = Number.isFinite(n.outerWidth()) ? n.outerWidth() : undefined;
-    nodes.push({ id, isEntry, ...(w !== undefined ? { width: w } : {}) });
+    const h = Number.isFinite(n.outerHeight()) ? n.outerHeight() : undefined;
+    nodes.push({
+      id,
+      isEntry,
+      ...(w !== undefined ? { width: w } : {}),
+      ...(h !== undefined ? { height: h } : {}),
+    });
     if (isEntry) {
       entryIds.add(id);
     }
@@ -723,24 +730,24 @@ function applyReachDepthPositions(cy: Core): void {
     edges.push({ source: src.id(), target: tgt.id() });
   });
 
-  // Bug 1 fix: cap the canvas-wide layer width at a readable multiple of
-  // the viewport so dense layers (~60 packages on Xray-core) wrap into
-  // multiple rows instead of stretching to a 15 000 px ribbon. The
-  // positioner will use `maxNodesPerRow` to decide where to wrap; the
-  // canvas budget here only scales the horizontal centering.
-  const canvasWidth = Math.max(1600, (cy.width() || 1200) * 2.5);
+  // PR #54: cap the canvas-wide layer column height at a readable multiple
+  // of the viewport so dense layers (~60 packages on Xray-core) wrap into
+  // multiple sub-columns instead of stretching to a 15 000 px ribbon. The
+  // positioner will use `maxNodesPerColumn` to decide where to wrap; the
+  // canvas budget here only scales the vertical centering.
+  const canvasHeight = Math.max(1200, (cy.height() || 900) * 2.5);
   const positions = computeReachDepthPositions(nodes, edges, entryIds, {
-    canvasWidth,
+    canvasHeight,
     topPadding: 80,
-    layerGap: 220,
-    minNodeGap: 240,
-    // Wrap once we hit ~14 nodes per row — keeps each row narrower than
-    // ~3 400 px (14 * 240) so the resulting canvas fits inside the
-    // zoom-capped fit window on a 1600-px-wide viewport.
-    maxNodesPerRow: 14,
-    rowGap: 90,
+    layerGap: 360,
+    minNodeGap: 110,
+    // Wrap once we hit ~14 nodes per sub-column — keeps each sub-column
+    // shorter than ~1 540 px (14 * 110) so the resulting canvas fits
+    // inside the zoom-capped fit window on a 900-px-tall viewport.
+    maxNodesPerColumn: 14,
+    columnGap: 160,
     nodeBuffer: 40,
-    deadRegion: { dx: 200, dy: 160 },
+    deadRegion: { dx: 0, dy: 240 },
   });
   cy.batch(() => {
     cy.nodes().forEach((n) => {

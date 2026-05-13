@@ -13,10 +13,11 @@
  *
  * Multirow follow-up (Bug 1 / Bug 2 / Bug 3) — once the canvas-wide
  * positioner became reach-depth, a dense layer of 60+ packages stretched
- * the layout to 50 000 px wide, the zoom-cap fit shrank everything below
- * legibility, and the user reported "edges invisible on first render".
- * This spec now also locks down:
- *   - no layer wider than `LAYER_WIDTH_BUDGET` px (multi-row wrap engaged);
+ * the layout to 50 000 px on its major axis, the zoom-cap fit shrank
+ * everything below legibility, and the user reported "edges invisible on
+ * first render". This spec now also locks down (after PR #54 rotated the
+ * layout to L→R):
+ *   - no layer taller than `LAYER_HEIGHT_BUDGET` px (multi-column wrap engaged);
  *   - cross-package edges visible on first render and after Relayout;
  *   - expanded compounds do not overlap after Relayout (Bug 3 fix).
  *
@@ -37,12 +38,12 @@ const screenshotDir = path.join(repoRoot, 'test-evidence', 'R11');
 fs.mkdirSync(screenshotDir, { recursive: true });
 
 /**
- * Maximum layer width (in layout/model units) the multirow positioner is
- * permitted to produce. Pre-fix Xray-core stretched to ~55 000 px on the
- * widest layer; the wrap kicks in at maxNodesPerRow=14 so even the densest
- * tier should now stay well under 5 000 px.
+ * Maximum layer height (in layout/model units) the multi-column positioner
+ * is permitted to produce on any single sub-column. PR #54 rotated the
+ * layout to L→R; the wrap kicks in at maxNodesPerColumn=14 so even the
+ * densest tier should stay well under 4 000 px tall.
  */
-const LAYER_WIDTH_BUDGET = 8_000;
+const LAYER_HEIGHT_BUDGET = 4_000;
 
 async function shot(page: Page, label: string): Promise<void> {
   await page.screenshot({
@@ -234,19 +235,19 @@ async function collectSpreadMetrics(page: Page): Promise<SpreadMetrics> {
   });
 }
 
-interface LayerWidthDiag {
-  /** Largest model-coordinate horizontal span on any single layer/row. */
-  maxRowSpan: number;
-  /** Distinct layer y-coordinates rounded to integer model units. */
+interface LayerHeightDiag {
+  /** Largest model-coordinate vertical span on any single sub-column. */
+  maxColSpan: number;
+  /** Distinct layer x-coordinates rounded to integer model units. */
   distinctLayers: number;
-  /** Maximum number of nodes that share a single row y-coordinate. */
-  largestRowSize: number;
+  /** Maximum number of nodes that share a single sub-column x-coordinate. */
+  largestColSize: number;
   /** Top-level model bbox (helps gauge whether wrap kept the canvas finite). */
   bboxW: number;
   bboxH: number;
 }
 
-async function collectLayerWidthDiag(page: Page): Promise<LayerWidthDiag> {
+async function collectLayerHeightDiag(page: Page): Promise<LayerHeightDiag> {
   return await page.evaluate(() => {
     interface CyBB { x1: number; y1: number; x2: number; y2: number; w: number; h: number }
     interface CyNode {
@@ -261,7 +262,7 @@ async function collectLayerWidthDiag(page: Page): Promise<LayerWidthDiag> {
     interface CyApi { nodes: () => { toArray: () => CyNode[] } }
     const cy = (window as unknown as { __cy?: CyApi }).__cy;
     if (cy === undefined) {
-      return { maxRowSpan: 0, distinctLayers: 0, largestRowSize: 0, bboxW: 0, bboxH: 0 };
+      return { maxColSpan: 0, distinctLayers: 0, largestColSize: 0, bboxW: 0, bboxH: 0 };
     }
     const tops = cy.nodes().toArray().filter((n) => {
       if (n.hasClass('hidden')) return false;
@@ -269,18 +270,18 @@ async function collectLayerWidthDiag(page: Page): Promise<LayerWidthDiag> {
       return n.visible();
     });
     if (tops.length === 0) {
-      return { maxRowSpan: 0, distinctLayers: 0, largestRowSize: 0, bboxW: 0, bboxH: 0 };
+      return { maxColSpan: 0, distinctLayers: 0, largestColSize: 0, bboxW: 0, bboxH: 0 };
     }
-    // Group by rounded y so wrapped sub-rows count as separate layers.
-    const byY = new Map<number, CyNode[]>();
+    // Group by rounded x so wrapped sub-columns count as separate layers.
+    const byX = new Map<number, CyNode[]>();
     let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
     for (const n of tops) {
       const pos = n.position();
-      const yKey = Math.round(pos.y);
-      let bucket = byY.get(yKey);
+      const xKey = Math.round(pos.x);
+      let bucket = byX.get(xKey);
       if (bucket === undefined) {
         bucket = [];
-        byY.set(yKey, bucket);
+        byX.set(xKey, bucket);
       }
       bucket.push(n);
       const bb = n.boundingBox();
@@ -289,24 +290,24 @@ async function collectLayerWidthDiag(page: Page): Promise<LayerWidthDiag> {
       if (bb.y1 < yMin) yMin = bb.y1;
       if (bb.y2 > yMax) yMax = bb.y2;
     }
-    let maxRowSpan = 0;
-    let largestRowSize = 0;
-    for (const bucket of byY.values()) {
-      if (bucket.length > largestRowSize) largestRowSize = bucket.length;
+    let maxColSpan = 0;
+    let largestColSize = 0;
+    for (const bucket of byX.values()) {
+      if (bucket.length > largestColSize) largestColSize = bucket.length;
       if (bucket.length < 2) continue;
-      let rxMin = Infinity, rxMax = -Infinity;
+      let ryMin = Infinity, ryMax = -Infinity;
       for (const n of bucket) {
         const bb = n.boundingBox();
-        if (bb.x1 < rxMin) rxMin = bb.x1;
-        if (bb.x2 > rxMax) rxMax = bb.x2;
+        if (bb.y1 < ryMin) ryMin = bb.y1;
+        if (bb.y2 > ryMax) ryMax = bb.y2;
       }
-      const span = rxMax - rxMin;
-      if (span > maxRowSpan) maxRowSpan = span;
+      const span = ryMax - ryMin;
+      if (span > maxColSpan) maxColSpan = span;
     }
     return {
-      maxRowSpan,
-      distinctLayers: byY.size,
-      largestRowSize,
+      maxColSpan,
+      distinctLayers: byX.size,
+      largestColSize,
       bboxW: xMax - xMin,
       bboxH: yMax - yMin,
     };
@@ -410,25 +411,27 @@ test.describe('R11 layout spread verification', () => {
     appendMetricsLog(`initial ${JSON.stringify(initial)}`);
     expect(initial.nodeCount, 'expected >20 top-level Xray internal packages').toBeGreaterThan(20);
 
-    // Bug 1 fix — no single layer row may stretch beyond LAYER_WIDTH_BUDGET
-    // model units. Pre-fix Xray-core stretched to ~55 000 px; with wrap
-    // engaged the worst row should stay under ~5 000 px.
-    const layerDiag = await collectLayerWidthDiag(page);
+    // Bug 1 (rotated) — no single sub-column may stretch beyond
+    // LAYER_HEIGHT_BUDGET model units. Pre-fix Xray-core stretched to
+    // ~55 000 px on the major axis; with wrap engaged the worst sub-
+    // column should stay under ~4 000 px.
+    const layerDiag = await collectLayerHeightDiag(page);
     appendMetricsLog(`layer-diag ${JSON.stringify(layerDiag)}`);
     expect(
-      layerDiag.maxRowSpan,
-      `Bug 1 regression — widest row spans ${String(layerDiag.maxRowSpan)} px (budget ${String(LAYER_WIDTH_BUDGET)})`,
-    ).toBeLessThanOrEqual(LAYER_WIDTH_BUDGET);
-    // With Xray-core internals exceeding maxNodesPerRow=14 the wrap MUST
-    // have engaged on at least one layer — distinctLayers strictly exceeds
-    // the BFS-depth of the source graph.
+      layerDiag.maxColSpan,
+      `Bug 1 regression — tallest sub-column spans ${String(layerDiag.maxColSpan)} px (budget ${String(LAYER_HEIGHT_BUDGET)})`,
+    ).toBeLessThanOrEqual(LAYER_HEIGHT_BUDGET);
+    // With Xray-core internals exceeding maxNodesPerColumn=14 the wrap
+    // MUST have engaged on at least one layer — distinctLayers strictly
+    // exceeds the BFS-depth of the source graph.
     expect(
       layerDiag.distinctLayers,
-      'multirow wrap did not engage on Xray-core',
+      'multi-column wrap did not engage on Xray-core',
     ).toBeGreaterThan(6);
 
     // Reach-depth layout assertions (replaces the R11 fcose spread metrics).
-    //   (a) every entry-point node sits on the top row (same y, within 1 px).
+    //   (a) every entry-point node sits in the leftmost column (same x,
+    //       within 1 px). PR #54 rotated the layout from top-down to L→R.
     //   (b) at least one inter-package edge (source.parent !== target.parent
     //       in canvas terms, i.e. cross-package) is present on first paint.
     //       Bug 2 fix — pre-PR, the default `hideExternal: true` plus the
@@ -443,21 +446,21 @@ test.describe('R11 layout spread verification', () => {
       }
       interface CyApi { nodes: (sel?: string) => { toArray: () => CyNode[] } }
       const cy = (window as unknown as { __cy?: CyApi }).__cy;
-      if (cy === undefined) return { entries: [] as { id: string; y: number }[] };
+      if (cy === undefined) return { entries: [] as { id: string; x: number }[] };
       const entries = cy
         .nodes()
         .toArray()
         .filter((n) => n.data('is_entry') === true)
-        .map((n) => ({ id: n.id(), y: n.position().y }));
+        .map((n) => ({ id: n.id(), x: n.position().x }));
       return { entries };
     });
     appendMetricsLog(`entry-diag ${JSON.stringify(entryDiag)}`);
     if (entryDiag.entries.length >= 2) {
-      const ys = entryDiag.entries.map((e) => e.y);
-      const spread = Math.max(...ys) - Math.min(...ys);
+      const xs = entryDiag.entries.map((e) => e.x);
+      const spread = Math.max(...xs) - Math.min(...xs);
       expect(
         spread,
-        `entry-point y spread must be ≤1 px, got ${String(spread)}`,
+        `entry-point x spread must be ≤1 px, got ${String(spread)}`,
       ).toBeLessThanOrEqual(1);
     }
 
