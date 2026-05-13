@@ -158,3 +158,42 @@ details > summary.filters-panel__legend {
   font-size: 10px;
   font-family: var(--font-mono);
 }
+
+/* Bulk package filter (Feature 3) — sits above the Packages list. */
+.filters-panel__group--bulk {
+  gap: 6px;
+}
+
+.filters-panel__pkg-search--error {
+  border-color: #b91c1c;
+}
+
+.filters-panel__hint--error {
+  color: #b91c1c;
+}
+
+.filters-panel__row--inline {
+  padding: 0;
+  gap: 6px;
+}
+
+.filters-panel__pkg-list--bulk {
+  max-height: 160px;
+  font-size: 11px;
+}
+
+.filters-panel__pkg-list--bulk li {
+  padding: 1px 0;
+  word-break: break-all;
+}
+
+.filters-panel__bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.filters-panel__bulk-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

@@ -59,7 +59,10 @@ import { DeadCodePanel } from './panels/DeadCodePanel';
 import { EntryPointsPanel } from './panels/EntryPointsPanel';
 import { ExportPanel } from './panels/ExportPanel';
 import { FiltersPanel } from './panels/FiltersPanel';
-import { LayerEditorBar } from './panels/LayerEditorBar';
+import {
+  LayerEditorBar,
+  type LayerEditorBarHandle,
+} from './panels/LayerEditorBar';
 import {
   defaultFilterSpec,
   normalizeFilterSpec,
@@ -256,6 +259,15 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
     }
     return m;
   }, [laneResolution, layerEditor.state]);
+
+  // Imperative handle to the LayerEditorBar — lets `FiltersPanel`'s
+  // "Создать группу из фильтра" button open the bar's "+ Группа" form with
+  // a derived prefix pre-filled. We use a ref instead of a global event
+  // bus so the React tree stays the source of truth.
+  const layerEditorBarRef = useRef<LayerEditorBarHandle | null>(null);
+  const handleCreateGroupFromFilter = useCallback((prefix: string) => {
+    layerEditorBarRef.current?.openAddGroupWithPrefix(prefix);
+  }, []);
 
   const handleExpandError = useCallback(
     (message: string) => {
@@ -521,6 +533,7 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
               value={filterSpec}
               onChange={handleFilterChange}
               cy={cy}
+              onCreateGroupFromFilter={handleCreateGroupFromFilter}
             />
           </div>
         }
@@ -563,6 +576,7 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
       >
         <div className="main-view__main-area" data-testid="main-area">
           <LayerEditorBar
+            ref={layerEditorBarRef}
             state={layerEditor.state}
             countsByLaneKey={countsByLaneKey}
             nodeIdsByLaneKey={laneResolution.nodesByLaneKey}
@@ -570,6 +584,11 @@ export function MainView({ apiClient }: MainViewProps): JSX.Element {
             onRemoveGroup={layerEditor.removeGroup}
             onMoveLane={layerEditor.moveLane}
             onReset={layerEditor.reset}
+            onReplaceState={layerEditor.setState}
+            presets={layerEditor.presets}
+            onSavePreset={layerEditor.savePreset}
+            onLoadPreset={layerEditor.loadPreset}
+            onDeletePreset={layerEditor.deletePreset}
             cy={cy}
           />
           <div className="main-view__canvas-wrap">

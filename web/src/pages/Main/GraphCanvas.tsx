@@ -752,14 +752,25 @@ function applyReachDepthPositions(cy: Core, layerState?: LayerEditorState): void
   const slotNodes: SlotLayoutNode[] = [];
   const legacyNodes: LayoutNode[] = [];
   const entryIds = new Set<string>();
+  // Cache outerWidth/outerHeight ONCE per layout pass. Cytoscape recomputes
+  // these from styling+label every call, so reading them twice (once for
+  // the inline width on the slot node, once for the dimensions map below)
+  // would double the cost on a 1000-node canvas. Per the Bug 1 fix the
+  // dimensions map is what drives dynamic slot widths and lane heights.
+  const nodeDimensions = new Map<string, { width: number; height: number }>();
   cy.nodes().forEach((n) => {
     if (n.isChild() && n.parent().length > 0) {
       return;
     }
     const id = n.id();
     const isEntry = n.data('is_entry') === true || n.hasClass('entry');
-    const w = Number.isFinite(n.outerWidth()) ? n.outerWidth() : undefined;
-    const h = Number.isFinite(n.outerHeight()) ? n.outerHeight() : undefined;
+    const rawW = n.outerWidth();
+    const rawH = n.outerHeight();
+    const w = Number.isFinite(rawW) && rawW > 0 ? rawW : undefined;
+    const h = Number.isFinite(rawH) && rawH > 0 ? rawH : undefined;
+    if (w !== undefined && h !== undefined) {
+      nodeDimensions.set(id, { width: w, height: h });
+    }
     const pkg = String(n.data('package') ?? '');
     slotNodes.push({
       id,
@@ -796,6 +807,9 @@ function applyReachDepthPositions(cy: Core, layerState?: LayerEditorState): void
 
   let positions: Map<string, { x: number; y: number }>;
   if (layerState !== undefined) {
+    // Bug 1 (this PR): pass per-node dimensions so the positioner picks
+    // dynamic slot widths and lane heights and stops overlapping the
+    // bounding boxes of expanded compounds against neighbours.
     const result = computeSlotPositions(slotNodes, slotEdges, entryIds, layerState, {
       canvasHeight,
       topPadding: 80,
@@ -803,7 +817,11 @@ function applyReachDepthPositions(cy: Core, layerState?: LayerEditorState): void
       minNodeGap: 110,
       maxNodesPerColumn: 14,
       columnGap: 160,
-      nodeBuffer: 40,
+      nodeBuffer: 24,
+      intraSlotPadding: 80,
+      interSlotGap: 120,
+      maxLaneHeight: 1800,
+      nodeDimensions,
       deadRegion: { dx: 0, dy: 240 },
     });
     positions = result.positions;

@@ -10,6 +10,12 @@
  *     `setState`) so the editor bar can mutate state without re-implementing
  *     storage logic.
  *
+ * **feat/overlap-presets-package-filter** extends this hook with a second
+ * key, `go-viz:<projectId>:layer-presets`, that stores named user presets:
+ * `{ presets: Array<{ id, name, state }> }`. The hook exposes
+ * `savePreset(name)`, `loadPreset(id)`, `deletePreset(id)` so the bar can
+ * surface a dropdown + buttons without re-implementing per-tab storage.
+ *
  * Persistence is best-effort — quota/SecurityError exceptions are silently
  * swallowed so localStorage hiccups never crash the editor.
  */
@@ -28,6 +34,13 @@ import {
   type Slot,
 } from './layout/laneMapping';
 
+/** Single named preset row, persisted as part of a `PresetsBlob`. */
+export interface NamedPreset {
+  id: string;
+  name: string;
+  state: LayerEditorState;
+}
+
 /** Imperative API returned to the consumer. */
 export interface UseLayerEditorStateApi {
   state: LayerEditorState;
@@ -44,6 +57,14 @@ export interface UseLayerEditorStateApi {
   moveLane: (laneKey: string, toSlotIndex: number, toStackIndex: number) => void;
   /** Restore the default state derived from BFS depths. */
   reset: () => void;
+  /** Read-only list of named presets, ordered by creation time. */
+  presets: readonly NamedPreset[];
+  /** Save the current `state` as a new preset; returns the generated id. */
+  savePreset: (name: string) => string;
+  /** Load a previously saved preset into the current `state`. No-op if id missing. */
+  loadPreset: (id: string) => void;
+  /** Drop a preset from the persisted list. No-op if id missing. */
+  deletePreset: (id: string) => void;
 }
 
 export interface UseLayerEditorStateOptions {
@@ -82,6 +103,11 @@ export function useLayerEditorState(
     }
     return defaultState;
   });
+  const [presets, setPresetsRaw] = useState<NamedPreset[]>(() => {
+    if (!persist) return [];
+    if (projectId === undefined || projectId === '') return [];
+    return readPresets(projectId);
+  });
 
   // When projectId changes (route nav, post-upload), reload the persisted
   // state for the new project (or default).
@@ -90,14 +116,17 @@ export function useLayerEditorState(
     lastProjectIdRef.current = projectId;
     if (projectId === undefined || projectId === '') {
       setStateRaw(defaultState);
+      setPresetsRaw([]);
       return;
     }
     if (!persist) {
       setStateRaw(defaultState);
+      setPresetsRaw([]);
       return;
     }
     const persisted = readPersisted(projectId);
     setStateRaw(persisted ?? defaultState);
+    setPresetsRaw(readPresets(projectId));
   }, [projectId, persist, defaultState]);
 
   // When the default state changes (graph topology landed, new depths
@@ -136,6 +165,23 @@ export function useLayerEditorState(
           window.localStorage.setItem(
             projectKey(projectId, 'layer-editor'),
             JSON.stringify(next),
+          );
+        } catch {
+          /* best-effort */
+        }
+      }
+    },
+    [projectId, persist],
+  );
+
+  const writePresets = useCallback(
+    (next: NamedPreset[]) => {
+      setPresetsRaw(next);
+      if (persist && projectId !== undefined && projectId !== '') {
+        try {
+          window.localStorage.setItem(
+            projectKey(projectId, 'layer-presets'),
+            JSON.stringify({ presets: next }),
           );
         } catch {
           /* best-effort */
@@ -229,7 +275,51 @@ export function useLayerEditorState(
     setState(defaultState);
   }, [defaultState, setState]);
 
-  return { state, setState, addGroup, removeGroup, moveLane, reset };
+  const savePreset = useCallback(
+    (name: string): string => {
+      const trimmed = name.trim() === '' ? 'Без имени' : name.trim();
+      const id = `p_${Math.random().toString(36).slice(2, 8)}_${Date.now().toString(36)}`;
+      const entry: NamedPreset = {
+        id,
+        name: trimmed,
+        state: cloneState(state),
+      };
+      writePresets([...presets, entry]);
+      return id;
+    },
+    [state, presets, writePresets],
+  );
+
+  const loadPreset = useCallback(
+    (id: string) => {
+      const found = presets.find((p) => p.id === id);
+      if (found === undefined) return;
+      setState(cloneState(found.state));
+    },
+    [presets, setState],
+  );
+
+  const deletePreset = useCallback(
+    (id: string) => {
+      const next = presets.filter((p) => p.id !== id);
+      if (next.length === presets.length) return;
+      writePresets(next);
+    },
+    [presets, writePresets],
+  );
+
+  return {
+    state,
+    setState,
+    addGroup,
+    removeGroup,
+    moveLane,
+    reset,
+    presets,
+    savePreset,
+    loadPreset,
+    deletePreset,
+  };
 }
 
 function readPersisted(projectId: string): LayerEditorState | null {
@@ -244,4 +334,36 @@ function readPersisted(projectId: string): LayerEditorState | null {
   } catch {
     return null;
   }
+}
+
+function readPresets(projectId: string): NamedPreset[] {
+  try {
+    const raw = window.localStorage.getItem(projectKey(projectId, 'layer-presets'));
+    if (raw === null || raw === '') return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed === null || typeof parsed !== 'object') return [];
+    const list = (parsed as { presets?: unknown }).presets;
+    if (!Array.isArray(list)) return [];
+    const out: NamedPreset[] = [];
+    for (const item of list) {
+      if (item === null || typeof item !== 'object') continue;
+      const row = item as { id?: unknown; name?: unknown; state?: unknown };
+      if (typeof row.id !== 'string' || typeof row.name !== 'string') continue;
+      const migrated = migrateLayerEditorState(row.state);
+      if (migrated === null) continue;
+      out.push({
+        id: row.id,
+        name: row.name,
+        state: { ...migrated, version: LAYER_EDITOR_STATE_VERSION },
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** Deep clone via JSON — `LayerEditorState` is a plain data shape. */
+function cloneState(state: LayerEditorState): LayerEditorState {
+  return JSON.parse(JSON.stringify(state)) as LayerEditorState;
 }

@@ -22,6 +22,8 @@ import {
   laneKeyOf,
   type LayerEditorState,
 } from '../pages/Main/layout/laneMapping';
+import { encodePreset } from '../pages/Main/layout/layerPresets';
+import type { NamedPreset } from '../pages/Main/useLayerEditorState';
 
 function makeDataTransfer(): DataTransfer {
   const store = new Map<string, string>();
@@ -50,6 +52,7 @@ function Harness({ initial, onMove, onAdd, onReset }: HarnessProps): JSX.Element
   const [state, setState] = useState<LayerEditorState>(
     initial ?? defaultLayerEditorState([0, 1, 2]),
   );
+  const [presets, setPresets] = useState<NamedPreset[]>([]);
   return (
     <LayerEditorBar
       state={state}
@@ -99,6 +102,22 @@ function Harness({ initial, onMove, onAdd, onReset }: HarnessProps): JSX.Element
         onReset?.();
         setState(defaultLayerEditorState([0, 1, 2]));
       }}
+      onReplaceState={(next) => {
+        setState(next);
+      }}
+      presets={presets}
+      onSavePreset={(name) => {
+        const id = `p_${String(presets.length + 1)}`;
+        setPresets((prev) => [...prev, { id, name, state }]);
+        return id;
+      }}
+      onLoadPreset={(id) => {
+        const found = presets.find((p) => p.id === id);
+        if (found !== undefined) setState(found.state);
+      }}
+      onDeletePreset={(id) => {
+        setPresets((prev) => prev.filter((p) => p.id !== id));
+      }}
     />
   );
 }
@@ -146,5 +165,57 @@ describe('<LayerEditorBar />', () => {
     await user.click(screen.getByTestId('layer-editor-reset'));
     expect(onReset).toHaveBeenCalled();
     expect(screen.getByTestId('layer-editor-chip-bfs:0')).toBeInTheDocument();
+  });
+
+  it('save-as adds a preset to the dropdown; delete removes it', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const select = screen.getByTestId('layer-editor-preset-select') as HTMLSelectElement;
+    // Initially only the "(нет)" placeholder option.
+    expect(select.options.length).toBe(1);
+    await user.click(screen.getByTestId('layer-editor-save-as'));
+    await user.type(
+      screen.getByTestId('layer-editor-save-as-input'),
+      'Архитектура',
+    );
+    await user.click(screen.getByTestId('layer-editor-save-as-confirm'));
+    expect(select.options.length).toBe(2);
+    expect(select.value).not.toBe('');
+    // Now delete: button enables only when a preset is selected.
+    await user.click(screen.getByTestId('layer-editor-delete-preset'));
+    expect(select.options.length).toBe(1);
+  });
+
+  it('export modal shows a goviz1: prefix string', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByTestId('layer-editor-export'));
+    const textarea = screen.getByTestId('layer-editor-export-text') as HTMLTextAreaElement;
+    expect(textarea.value.startsWith('goviz1:')).toBe(true);
+  });
+
+  it('import modal accepts a round-tripped string and rejects garbage', async () => {
+    const user = userEvent.setup();
+    const state: LayerEditorState = {
+      version: 1,
+      groups: [{ id: 'g', name: 'DB', prefix: 'db' }],
+      slots: [{ lanes: [{ kind: 'folder', id: 'g', name: 'DB', prefix: 'db' }] }],
+      unassigned: [],
+    };
+    const encoded = encodePreset(state);
+    render(<Harness />);
+    // 1. Import garbage → error surfaces in the modal.
+    await user.click(screen.getByTestId('layer-editor-import'));
+    await user.type(
+      screen.getByTestId('layer-editor-import-text'),
+      'not-a-preset',
+    );
+    await user.click(screen.getByTestId('layer-editor-import-submit'));
+    expect(screen.getByTestId('layer-editor-import-error')).toBeInTheDocument();
+    // 2. Replace with a valid encoded preset → modal closes.
+    const ta = screen.getByTestId('layer-editor-import-text') as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: encoded } });
+    await user.click(screen.getByTestId('layer-editor-import-submit'));
+    expect(screen.queryByTestId('layer-editor-import-error')).toBeNull();
   });
 });

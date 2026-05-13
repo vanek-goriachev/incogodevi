@@ -171,4 +171,145 @@ describe('computeSlotPositions', () => {
     const entry = r.positions.get('entry')!;
     expect(orphan.y).toBeGreaterThan(entry.y);
   });
+
+  // -------- Bug 1 (feat/overlap-presets-package-filter): dynamic widths --------
+  // Slots populated with nodes of widths {200, 800, 300} must produce x-positions
+  // such that the boxes (centred at each x) do not overlap. The legacy fixed-
+  // pitch positioner would space them at slotIndex * layerGap regardless of
+  // width, so the 800-wide middle slot would punch through both neighbours.
+  it('non-overlapping x: dynamic slot widths handle widely-varying nodes', () => {
+    const nodes: SlotLayoutNode[] = [
+      { id: 'a', package: 'pkg-a', isEntry: true, width: 200, height: 60 },
+      { id: 'b', package: 'pkg-b', width: 800, height: 60 },
+      { id: 'c', package: 'pkg-c', width: 300, height: 60 },
+    ];
+    const edges: SlotLayoutEdge[] = [
+      { source: 'a', target: 'b' },
+      { source: 'b', target: 'c' },
+    ];
+    const dims = new Map<string, { width: number; height: number }>([
+      ['a', { width: 200, height: 60 }],
+      ['b', { width: 800, height: 60 }],
+      ['c', { width: 300, height: 60 }],
+    ]);
+    const state = defaultLayerEditorState([0, 1, 2]);
+    const r = computeSlotPositions(nodes, edges, new Set(), state, {
+      canvasHeight: 1200,
+      topPadding: 50,
+      minNodeGap: 100,
+      intraSlotPadding: 80,
+      interSlotGap: 120,
+      nodeDimensions: dims,
+    });
+    const pa = r.positions.get('a')!;
+    const pb = r.positions.get('b')!;
+    const pc = r.positions.get('c')!;
+    // Reconstruct bbox extents: each centre ± width/2.
+    const extents = [
+      { x1: pa.x - 100, x2: pa.x + 100 },
+      { x1: pb.x - 400, x2: pb.x + 400 },
+      { x1: pc.x - 150, x2: pc.x + 150 },
+    ];
+    for (let i = 0; i < extents.length; i += 1) {
+      for (let j = i + 1; j < extents.length; j += 1) {
+        const a = extents[i]!;
+        const b = extents[j]!;
+        const overlap = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1);
+        expect(overlap).toBeLessThan(0);
+      }
+    }
+  });
+
+  // Lane stacking inside ONE slot with heights {100, 600, 200} must not have
+  // any pair of lane y-bands intersecting once you account for actual node
+  // heights. The old proportional-height code would only have made the
+  // 600-tall lane consume more vertical share but still let its top exceed
+  // the lane above it.
+  it('non-overlapping y: lane heights honour per-node outerHeight', () => {
+    // Slot 0 has BFS 0; slot 1 stacks BFS 1 (tall) on top of folder (short).
+    const nodes: SlotLayoutNode[] = [
+      { id: 'entry', package: 'cmd', isEntry: true, width: 120, height: 100 },
+      { id: 't1', package: 'tall', width: 120, height: 600 },
+      { id: 's1', package: 'short', width: 120, height: 200 },
+    ];
+    const edges: SlotLayoutEdge[] = [
+      { source: 'entry', target: 't1' },
+      { source: 'entry', target: 's1' },
+    ];
+    const dims = new Map<string, { width: number; height: number }>([
+      ['entry', { width: 120, height: 100 }],
+      ['t1', { width: 120, height: 600 }],
+      ['s1', { width: 120, height: 200 }],
+    ]);
+    const state: LayerEditorState = {
+      version: 1,
+      groups: [{ id: 'g', name: 'Short', prefix: 'short' }],
+      slots: [
+        { lanes: [{ kind: 'bfs', depth: 0 }] },
+        {
+          lanes: [
+            { kind: 'bfs', depth: 1 },
+            { kind: 'folder', id: 'g', name: 'Short', prefix: 'short' },
+          ],
+        },
+      ],
+      unassigned: [],
+    };
+    const r = computeSlotPositions(nodes, edges, new Set(), state, {
+      canvasHeight: 1200,
+      topPadding: 50,
+      minNodeGap: 80,
+      intraSlotPadding: 80,
+      interSlotGap: 120,
+      nodeDimensions: dims,
+    });
+    const t = r.positions.get('t1')!;
+    const s = r.positions.get('s1')!;
+    // tall lane lives above short lane; the tall node's bottom must clear the
+    // short node's top by at least minNodeGap (80) since they live in different
+    // lanes.
+    const tBottom = t.y + 300; // height 600 → ±300
+    const sTop = s.y - 100; // height 200 → ±100
+    expect(sTop).toBeGreaterThanOrEqual(tBottom + 79); // tolerance for minNodeGap
+  });
+
+  // Idempotence under varied dimensions: two calls with the same dim map
+  // must produce identical positions to ≤1 px (independent of which lane
+  // each node falls into).
+  it('idempotent under varied per-node dimensions', () => {
+    const nodes: SlotLayoutNode[] = [
+      { id: 'a', package: 'cmd', isEntry: true },
+      { id: 'b', package: 'internal/api' },
+      { id: 'c', package: 'internal/api' },
+      { id: 'd', package: 'internal/db' },
+    ];
+    const edges: SlotLayoutEdge[] = [
+      { source: 'a', target: 'b' },
+      { source: 'b', target: 'c' },
+      { source: 'b', target: 'd' },
+    ];
+    const dims = new Map<string, { width: number; height: number }>([
+      ['a', { width: 150, height: 60 }],
+      ['b', { width: 420, height: 220 }],
+      ['c', { width: 220, height: 80 }],
+      ['d', { width: 320, height: 140 }],
+    ]);
+    const state = defaultLayerEditorState([0, 1, 2]);
+    const opts = {
+      canvasHeight: 1200,
+      topPadding: 50,
+      minNodeGap: 80,
+      intraSlotPadding: 80,
+      interSlotGap: 120,
+      nodeDimensions: dims,
+    };
+    const r1 = computeSlotPositions(nodes, edges, new Set(), state, opts);
+    const r2 = computeSlotPositions(nodes, edges, new Set(), state, opts);
+    for (const [id, p1] of r1.positions.entries()) {
+      const p2 = r2.positions.get(id);
+      expect(p2).toBeDefined();
+      expect(Math.abs(p1.x - p2!.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(p1.y - p2!.y)).toBeLessThanOrEqual(1);
+    }
+  });
 });

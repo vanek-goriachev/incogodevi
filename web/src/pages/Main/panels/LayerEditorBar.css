@@ -168,4 +168,102 @@
   color: var(--color-fg-muted);
 }
 
+.layer-editor-bar__hint--error {
+  color: #b91c1c;
+}
+
+/* Preset dropdown */
+.layer-editor-bar__preset-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.layer-editor-bar__preset-caption {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--color-fg-muted);
+}
+
+.layer-editor-bar__select {
+  font: inherit;
+  font-size: 11px;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+  color: var(--color-fg);
+}
+
+.layer-editor-bar__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Save-as / Export / Import modal */
+.layer-editor-bar__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.45);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 60;
+  padding: 24px;
+}
+
+.layer-editor-bar__modal {
+  width: 100%;
+  max-width: 480px;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+
+.layer-editor-bar__modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.layer-editor-bar__modal-title {
+  margin: 0;
+  font-size: 14px;
+}
+
+.layer-editor-bar__modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.layer-editor-bar__modal-label {
+  font-size: 12px;
+  color: var(--color-fg-muted);
+}
+
+.layer-editor-bar__modal-body input[type='text'],
+.layer-editor-bar__modal-textarea {
+  font: inherit;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  background-color: var(--color-bg-elevated);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+.layer-editor-bar__modal-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 /* Hover-pulse class added to matching cytoscape nodes — wired from JS. */
